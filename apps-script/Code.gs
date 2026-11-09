@@ -226,6 +226,7 @@ function format_(ss) {
   ]);
   [130, 170, 190, 100, 75, 70, 70, 85, 65, 70, 75, 75, 75, 60, 65, 75].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
   s = ss.getSheetByName('Branch Summary');
+  s.getRange('B1:C1').merge();                       // room for the full month name
   s.getRange('B1').setNumberFormat('mmmm yyyy').setBackground('#fff4e0').setFontWeight('bold')
     .setDataValidation(SpreadsheetApp.newDataValidation().requireDate().build());
   s.getRange('A1').setFontWeight('bold');
