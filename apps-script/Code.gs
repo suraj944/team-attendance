@@ -110,6 +110,7 @@ function buildSummaries_(ss) {
     const inMonth = id + ',' + ID + ',' + dt + ',">="&' + S + ',' + dt + ',"<="&' + END;
     const gone = id + ',' + ID + ',' + dt + ',">="&MAX(' + S + ',' + J + '),' + dt + ',"<="&' + PAST;
     const goneJ = id + ',' + ID + ',' + dt + ',">="&MAX(' + S + ',' + JOIN + '),' + dt + ',"<="&' + PAST;
+    const allJ = id + ',' + ID + ',' + dt + ',">="&MAX(' + S + ',' + JOIN + '),' + dt + ',"<="&' + END;
     const W = (x) => '=IF(' + ID + '="","",' + x + ')';
     f.push([
       W('MAX(0,NETWORKDAYS.INTL(MAX(' + S + ',' + J + '),' + PAST + ',$B$3))'),
@@ -117,7 +118,7 @@ function buildSummaries_(ss) {
       W('MAX(0,$E' + r + '-COUNTIFS(' + gone + ',' + A('Day') + ',"<>"&LEFT($B$2,3)))'),
       '=IF(OR(' + ID + '="",$F' + r + '+$G' + r + '=0),"",$F' + r + '/($F' + r + '+$G' + r + '))',
       W('COUNTIFS(' + inMonth + ',' + A('Late') + ',"Yes")'),
-      W('COUNTIFS(' + goneJ + ',' + A('Status') + ',"Logout pending")+COUNTIFS(' + goneJ + ',' + A('Status') + ',"Logout missed")'),
+      W('COUNTIFS(' + goneJ + ',' + A('Status') + ',"Logout pending")+COUNTIFS(' + allJ + ',' + A('Status') + ',"Logout missed")'),
       W('SUMIFS(' + A('Total Calls') + ',' + inMonth + ')'),
       W('SUMIFS(' + A('Connect Calls') + ',' + inMonth + ')'),
       '=IF(OR(' + ID + '="",N($K' + r + ')=0),"",$L' + r + '/$K' + r + ')',
@@ -150,7 +151,7 @@ function buildSummaries_(ss) {
         colLetter_('Employees', 'Status') + ':$' + colLetter_('Employees', 'Status') + ',"Active")'),
       W('COUNTIFS(' + inMonth + ')'),
       W('COUNTIFS(' + inMonth + ',' + A('Late') + ',"Yes")'),
-      W('COUNTIFS(' + past + ',' + A('Status') + ',"Logout pending")+COUNTIFS(' + past + ',' + A('Status') + ',"Logout missed")'),
+      W('COUNTIFS(' + past + ',' + A('Status') + ',"Logout pending")+COUNTIFS(' + inMonth + ',' + A('Status') + ',"Logout missed")'),
       W('SUMIFS(' + A('Total Calls') + ',' + inMonth + ')'),
       W('SUMIFS(' + A('Connect Calls') + ',' + inMonth + ')'),
       '=IF(OR(' + B + '="",N($F' + r + ')=0),"",$G' + r + '/$F' + r + ')',
@@ -424,7 +425,7 @@ function attendance_() {
                    branch: o['Branch'], sm: o['SM'], row: o._row, raw: o };
     if (!base.date || !base.username) return;
     if (o['Login Time']) out.push(Object.assign({}, base, { type: 'login', time: o['Login Time'], cp: o['CP Firm'],
-      loc: o['Location'], late: o['Late'], message: o['Login Message'] }));
+      loc: o['Location'], late: o['Late'], status: o['Status'], message: o['Login Message'] }));
     if (o['Logout Time']) out.push(Object.assign({}, base, { type: 'logout', time: o['Logout Time'], total: o['Total Calls'],
       connect: o['Connect Calls'], lead: o['Lead of the Day'], visitToday: o['Site Visit Done'],
       visitTom: o['Tomorrow Site Visit'], wtd: o['Site Visit Confirmed WTD'], booking: o['Booking'], message: o['Logout Message'] }));
@@ -466,7 +467,7 @@ function callerState_(u) {
     user: publicUser_(u),
     isAdmin: false,
     today: { date: today, login: (byDay[today] || {}).login || null, logout: (byDay[today] || {}).logout || null },
-    missed: days.filter(function (d) { return d < today && byDay[d].login && !byDay[d].logout; }).slice(0, 5),
+    missed: days.filter(function (d) { return byDay[d].login && !byDay[d].logout && (d < today || byDay[d].login.status === 'Logout missed'); }).slice(0, 5),
     history: days.slice(0, 10).map(function (d) {
       return { date: d, login: byDay[d].login ? byDay[d].login.time : '', logout: byDay[d].logout ? byDay[d].logout.time : '' };
     }),
@@ -707,7 +708,7 @@ const API = {
             row.total = lo.total; row.connect = lo.connect; row.lead = lo.lead; row.visits = lo.visitToday; row.booking = lo.booking || '';
             e.total += num_(lo.total); e.connect += num_(lo.connect); e.lead += num_(lo.lead); e.visits += num_(lo.visitToday); e.booking += num_(lo.booking);
             row.status = isLate ? 'Late' : 'Present';
-          } else if (d < today) { e.missed++; row.status = 'Logout missed'; }
+          } else if (d < today || li.status === 'Logout missed') { e.missed++; row.status = 'Logout missed'; }
           else row.status = 'Working';
         } else if (isOff) row.status = 'Weekly off';
         else if (d === today) row.status = 'Not logged in';
@@ -753,7 +754,8 @@ const API = {
         const lo = att.filter(function (a) { return a.username === u.username && a.type === 'logout'; })[0];
         return { name: u.name, username: u.username, branch: li ? li.branch : u.branch,
                  login: li ? li.time : '', logout: lo ? lo.time : '', sm: li ? li.sm : '',
-                 total: lo ? lo.total : '', connect: lo ? lo.connect : '', booking: lo ? (lo.booking || '') : '' };
+                 total: lo ? lo.total : '', connect: lo ? lo.connect : '', booking: lo ? (lo.booking || '') : '',
+                 missed: !!(li && !lo && li.status === 'Logout missed') };
       }),
     };
   },

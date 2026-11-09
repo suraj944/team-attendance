@@ -879,7 +879,7 @@ function statusOf(r){
   if (!r.login) return R.isOff ? ["Weekly off",""] : R.isToday ? ["Not logged in","warn"] : ["Absent","bad"];
   if (!r.logout){
     const [h,m] = R.reminderAt.split(":").map(Number);
-    if (!R.isToday) return ["Logout missed","bad"];
+    if (!R.isToday || r.missed) return ["Logout missed","bad"];
     return R.serverMinutes >= h*60+m ? ["Logout pending","bad"] : ["Working","done"];
   }
   return ["Done","done"];
