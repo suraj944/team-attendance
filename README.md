@@ -15,7 +15,7 @@ A daily Login / Logout website for calling teams. Callers sign in, post their Lo
 
 **Admin**
 - Today: who logged in, logged out or is pending, with a button that sends a logout reminder to a WhatsApp group
-- Reports: any date range, branch summary, employee attendance, late logins, missed logouts, calls, connect %, leads, site visits, top performers and a day-by-day view per caller
+- Reports: any date range, branch summary, employee attendance, late logins, missed logouts, calls, connect %, leads, site visits, bookings, top performers and a day-by-day view per caller, with Excel download
 - Callers: add with first name, last name, +91 phone, branch and joining date. The Login ID (first name + last name + last 4 phone digits) and password are created automatically and can be sent to the caller on WhatsApp
 - Edit callers, reset passwords, mark callers inactive, and change branches with a history
 - Settings: branches, SM names, locations, logout reminder time, late-login time and weekly off (default Monday)
@@ -36,7 +36,7 @@ A daily Login / Logout website for calling teams. Callers sign in, post their Lo
 | Tab | Contents |
 |---|---|
 | Employees | One row per employee: Employee ID (Login ID), first and last name, full name, phone, branch, joining date, role, status, created on, password hash (hidden) |
-| Attendance | One row per employee per day: login and logout side by side, late flag, calls, connect %, leads, site visits, status (Complete / Logout pending / Logout missed), admin note |
+| Attendance | One row per employee per day: login and logout side by side, late flag, calls, connect %, leads, site visits, booking, status (Complete / Logout pending / Logout missed), admin note |
 | Employee Summary | Monthly figures per employee, calculated by formulas. Change the month in B1 |
 | Branch Summary | Monthly figures per branch, calculated by formulas. Change the month in B1 |
 | Branch Transfers | History of branch changes |

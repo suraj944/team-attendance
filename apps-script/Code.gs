@@ -29,7 +29,7 @@ const COLS = {
                 'Role', 'Status', 'Created On', 'Password Hash'],
   'Attendance': ['Date', 'Day', 'Employee ID', 'Employee Name', 'Branch', 'SM', 'CP Firm', 'Location',
                  'Login Time', 'Late', 'Logout Time', 'Hours Worked', 'Total Calls', 'Connect Calls', 'Connect %',
-                 'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Site Visit Confirmed WTD', 'Status',
+                 'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Booking', 'Site Visit Confirmed WTD', 'Status',
                  'Login Posted At', 'Logout Posted At', 'Admin Note', 'Login Message', 'Logout Message'],
   'Branch Transfers': ['Changed On', 'Employee ID', 'Employee Name', 'From Branch', 'To Branch', 'Effective Date', 'Changed By'],
   'Branches': ['Branch'],
@@ -38,7 +38,7 @@ const COLS = {
   'Settings': ['Setting', 'Value', 'Description'],
 };
 const DATE_COLS = ['Date', 'Joining Date', 'Effective Date'];
-const NUM_COLS = ['Total Calls', 'Connect Calls', 'Connect %', 'Site Visit Done', 'Tomorrow Site Visit', 'Site Visit Confirmed WTD'];
+const NUM_COLS = ['Total Calls', 'Connect Calls', 'Connect %', 'Site Visit Done', 'Tomorrow Site Visit', 'Site Visit Confirmed WTD', 'Booking'];
 const SUMMARY_ROWS = 300;     // employee rows prepared in "Employee Summary"
 
 /* ================= Web page ================= */
@@ -97,7 +97,7 @@ function buildSummaries_(ss) {
   s.getRange(1, 4).setValue('Change the month in B1 (any date in that month). Everything below updates automatically.');
   s.getRange(3, 4).setValue('(used by the formulas, do not edit)');
   const eh = ['Employee ID', 'Employee Name', 'Branch', 'Joining Date', 'Working Days', 'Present', 'Absent', 'Attendance %',
-              'Late Logins', 'Logout Missed', 'Total Calls', 'Connect Calls', 'Connect %', 'Leads', 'Site Visits'];
+              'Late Logins', 'Logout Missed', 'Total Calls', 'Connect Calls', 'Connect %', 'Leads', 'Site Visits', 'Bookings'];
   s.getRange(5, 1, 1, eh.length).setValues([eh]);
   s.getRange(6, 1).setFormula('=IFERROR(SORT(FILTER({' + E('Employee ID') + ',' + E('Full Name') + ',' + E('Branch') + ',' + E('Joining Date') +
     '},' + E('Role') + '="Caller",' + E('Status') + '="Active"),3,TRUE,2,TRUE),"")');
@@ -120,9 +120,10 @@ function buildSummaries_(ss) {
       '=IF(OR(' + ID + '="",N($K' + r + ')=0),"",$L' + r + '/$K' + r + ')',
       W('SUMIFS(' + A('Lead of the Day') + ',' + inMonth + ')'),
       W('SUMIFS(' + A('Site Visit Done') + ',' + inMonth + ')'),
+      W('SUMIFS(' + A('Booking') + ',' + inMonth + ')'),
     ]);
   }
-  s.getRange(6, 5, SUMMARY_ROWS, 11).setFormulas(f);
+  s.getRange(6, 5, SUMMARY_ROWS, 12).setFormulas(f);
   s.setFrozenRows(5);
 
   /* ---- Branch Summary ---- */
@@ -131,7 +132,7 @@ function buildSummaries_(ss) {
   s.getRange(1, 1, 1, 2).setValues([['Month', first]]);
   s.getRange(1, 4).setValue('Change the month in B1. Present days and calls are counted under the branch the caller was in on that day.');
   const bh = ['Branch', 'Active Callers', 'Present Days', 'Late Logins', 'Logout Missed', 'Total Calls', 'Connect Calls',
-              'Connect %', 'Leads', 'Site Visits'];
+              'Connect %', 'Leads', 'Site Visits', 'Bookings'];
   s.getRange(3, 1, 1, bh.length).setValues([bh]);
   s.getRange(4, 1).setFormula('=IFERROR(FILTER(Branches!A2:A,Branches!A2:A<>""),"")');
   const br = A('Branch'), g = [];
@@ -152,9 +153,10 @@ function buildSummaries_(ss) {
       '=IF(OR(' + B + '="",N($F' + r + ')=0),"",$G' + r + '/$F' + r + ')',
       W('SUMIFS(' + A('Lead of the Day') + ',' + inMonth + ')'),
       W('SUMIFS(' + A('Site Visit Done') + ',' + inMonth + ')'),
+      W('SUMIFS(' + A('Booking') + ',' + inMonth + ')'),
     ]);
   }
-  s.getRange(4, 2, 60, 9).setFormulas(g);
+  s.getRange(4, 2, 60, 10).setFormulas(g);
   s.setFrozenRows(3);
 }
 
@@ -190,15 +192,15 @@ function format_(ss) {
   s.getRange('A2:A').setNumberFormat('dd-mmm-yyyy');
   s.getRange('O2:O').setNumberFormat('0%');
   s.setConditionalFormatRules([
-    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Complete').setBackground('#e7f6ef').setFontColor('#0b6b45').setRanges([s.getRange('T2:T')]).build(),
-    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Logout pending').setBackground('#fff4e0').setFontColor('#7a4a00').setRanges([s.getRange('T2:T')]).build(),
-    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Logout missed').setBackground('#fdecea').setFontColor('#8a1f14').setRanges([s.getRange('T2:T')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Complete').setBackground('#e7f6ef').setFontColor('#0b6b45').setRanges([s.getRange('U2:U')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Logout pending').setBackground('#fff4e0').setFontColor('#7a4a00').setRanges([s.getRange('U2:U')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Logout missed').setBackground('#fdecea').setFontColor('#8a1f14').setRanges([s.getRange('U2:U')]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Yes').setBackground('#fff4e0').setFontColor('#7a4a00').setRanges([s.getRange('J2:J')]).build(),
   ]);
-  [100, 50, 130, 160, 190, 140, 90, 100, 85, 50, 85, 80, 70, 75, 70, 75, 75, 85, 90, 120, 160, 160, 200, 60, 60]
+  [100, 50, 130, 160, 190, 140, 90, 100, 85, 50, 85, 80, 70, 75, 70, 75, 75, 85, 90, 75, 120, 160, 160, 200, 60, 60]
     .forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
-  s.hideColumns(24, 2);                                       // full WhatsApp messages – kept for records
-  s.getRange('W1').setNote('Admin can write a note here, e.g. "Logout missed – phone battery dead".');
+  s.hideColumns(25, 2);                                       // full WhatsApp messages – kept for records
+  s.getRange('X1').setNote('Admin can write a note here, e.g. "Logout missed – phone battery dead".');
   // Transfers
   s = ss.getSheetByName('Branch Transfers');
   s.getRange('F2:F').setNumberFormat('dd-mmm-yyyy');
@@ -217,13 +219,13 @@ function format_(ss) {
     SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0.75).setBackground('#fdecea').setFontColor('#8a1f14').setRanges([s.getRange('H6:H')]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0).setFontColor('#c0392b').setRanges([s.getRange('J6:J')]).build(),
   ]);
-  [130, 170, 190, 100, 75, 70, 70, 85, 65, 70, 75, 75, 75, 60, 65].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
+  [130, 170, 190, 100, 75, 70, 70, 85, 65, 70, 75, 75, 75, 60, 65, 75].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
   s = ss.getSheetByName('Branch Summary');
   s.getRange('B1').setNumberFormat('mmmm yyyy').setBackground('#fff4e0').setFontWeight('bold')
     .setDataValidation(SpreadsheetApp.newDataValidation().requireDate().build());
   s.getRange('A1').setFontWeight('bold');
   s.getRange('H4:H').setNumberFormat('0%');
-  [220, 80, 80, 75, 75, 80, 80, 75, 60, 70].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
+  [220, 80, 80, 75, 75, 80, 80, 75, 60, 70, 75].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
   ss.setActiveSheet(ss.getSheetByName('Employees'));
 }
 
@@ -408,7 +410,7 @@ function attendance_() {
       loc: o['Location'], late: o['Late'], message: o['Login Message'] }));
     if (o['Logout Time']) out.push(Object.assign({}, base, { type: 'logout', time: o['Logout Time'], total: o['Total Calls'],
       connect: o['Connect Calls'], lead: o['Lead of the Day'], visitToday: o['Site Visit Done'],
-      visitTom: o['Tomorrow Site Visit'], wtd: o['Site Visit Confirmed WTD'], message: o['Logout Message'] }));
+      visitTom: o['Tomorrow Site Visit'], wtd: o['Site Visit Confirmed WTD'], booking: o['Booking'], message: o['Logout Message'] }));
   });
   return out;
 }
@@ -432,6 +434,7 @@ function buildMessage_(type, dateKey, name, d) {
     'Lead of the day:- ' + d.lead,
     'Site visit done today- ' + d.visitToday,
     'Tomorrow site visit: ' + d.visitTom,
+    'Booking: ' + d.booking,
     'Site visit confirmed WTD: ' + d.wtd,
   ].join('\n');
 }
@@ -507,7 +510,7 @@ const API = {
         if (!st.today.login) throw new Error('Please post your Login first.');
         rec.time = fmt12_(nowMinutes_());           // logout time = server time, cannot be changed
         rec.sm = st.today.login.sm;                 // SM fixed from today's login
-        ['total', 'connect', 'lead', 'visitToday', 'visitTom', 'wtd'].forEach(function (k) {
+        ['total', 'connect', 'lead', 'visitToday', 'visitTom', 'booking', 'wtd'].forEach(function (k) {
           rec[k] = String(d[k] === undefined ? '' : d[k]).trim();
           if (!rec[k]) throw new Error('Please fill all logout fields (put 0 if none).');
         });
@@ -529,7 +532,7 @@ const API = {
           'Hours Worked': om > lm ? Math.floor((om - lm) / 60) + 'h ' + ((om - lm) % 60) + 'm' : '',
           'Total Calls': rec.total, 'Connect Calls': rec.connect, 'Connect %': tot ? Math.round(con * 1000 / tot) / 1000 : '',
           'Lead of the Day': rec.lead, 'Site Visit Done': rec.visitToday, 'Tomorrow Site Visit': rec.visitTom,
-          'Site Visit Confirmed WTD': rec.wtd, 'Status': 'Complete', 'Logout Posted At': posted, 'Logout Message': message }));
+          'Site Visit Confirmed WTD': rec.wtd, 'Booking': rec.booking, 'Status': 'Complete', 'Logout Posted At': posted, 'Logout Message': message }));
       }
       return { message: message, state: callerState_(u) };
     } finally {
@@ -667,13 +670,13 @@ const API = {
     }).map(function (u) {
       const mine = by[u.username] || {}, start = u.joining && u.joining > from ? u.joining : from;
       const e = { username: u.username, name: u.name, phone: u.phone, branch: u.branch, joining: u.joining, active: u.active,
-                  present: 0, absent: 0, late: 0, missed: 0, offWorked: 0, total: 0, connect: 0, lead: 0, visits: 0, daily: [] };
+                  present: 0, absent: 0, late: 0, missed: 0, offWorked: 0, total: 0, connect: 0, lead: 0, visits: 0, booking: 0, daily: [] };
       let loginSum = 0, workMins = 0, workN = 0;
       days.forEach(function (d) {
         if (d < start) return;
         const li = (mine[d] || {}).login, lo = (mine[d] || {}).logout, isOff = offDay >= 0 && dow_(d) === offDay;
         const row = { date: d, day: DAYS_[dow_(d)].slice(0, 3), login: li ? li.time : '', logout: lo ? lo.time : '',
-                      sm: li ? li.sm : '', hours: '', total: '', connect: '', lead: '', visits: '', status: '' };
+                      sm: li ? li.sm : '', hours: '', total: '', connect: '', lead: '', visits: '', booking: '', status: '' };
         if (li) {
           e.present++; if (isOff) e.offWorked++;
           const lm = parse12_(li.time), isLate = lm !== null && lm > lateMin;
@@ -682,8 +685,8 @@ const API = {
           if (lo) {
             const om = parse12_(lo.time);
             if (lm !== null && om !== null && om > lm) { workMins += om - lm; workN++; row.hours = Math.floor((om - lm) / 60) + 'h ' + ((om - lm) % 60) + 'm'; }
-            row.total = lo.total; row.connect = lo.connect; row.lead = lo.lead; row.visits = lo.visitToday;
-            e.total += num_(lo.total); e.connect += num_(lo.connect); e.lead += num_(lo.lead); e.visits += num_(lo.visitToday);
+            row.total = lo.total; row.connect = lo.connect; row.lead = lo.lead; row.visits = lo.visitToday; row.booking = lo.booking || '';
+            e.total += num_(lo.total); e.connect += num_(lo.connect); e.lead += num_(lo.lead); e.visits += num_(lo.visitToday); e.booking += num_(lo.booking);
             row.status = isLate ? 'Late' : 'Present';
           } else if (d < today) { e.missed++; row.status = 'Logout missed'; }
           else row.status = 'Working';
@@ -709,7 +712,7 @@ const API = {
       return { branch: b, callers: es.filter(function (e) { return e.active === 'yes'; }).length,
                present: pr, absent: ab, late: sum('late'), missed: sum('missed'),
                attPct: pr + ab ? Math.round(pr * 100 / (pr + ab)) : null,
-               total: tot, connect: con, connectPct: tot ? Math.round(con * 100 / tot) : null, lead: sum('lead'), visits: sum('visits') };
+               total: tot, connect: con, connectPct: tot ? Math.round(con * 100 / tot) : null, lead: sum('lead'), visits: sum('visits'), booking: sum('booking') };
     });
     return { from: from, to: to, today: today, lateAfter: lateAfter, weeklyOff: weeklyOff, branches: branches, employees: employees };
   },
@@ -730,7 +733,7 @@ const API = {
         const lo = att.filter(function (a) { return a.username === u.username && a.type === 'logout'; })[0];
         return { name: u.name, username: u.username, branch: li ? li.branch : u.branch,
                  login: li ? li.time : '', logout: lo ? lo.time : '', sm: li ? li.sm : '',
-                 total: lo ? lo.total : '', connect: lo ? lo.connect : '' };
+                 total: lo ? lo.total : '', connect: lo ? lo.connect : '', booking: lo ? (lo.booking || '') : '' };
       }),
     };
   },

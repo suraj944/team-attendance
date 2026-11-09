@@ -5,7 +5,7 @@
 (function(){
   let LS; try { LS = window.localStorage; LS.getItem('x'); } catch(e) { const m={}; LS={getItem:k=>k in m?m[k]:null,setItem:(k,v)=>m[k]=String(v),removeItem:k=>delete m[k]}; }
   // new test-data version -> clear old saved test data automatically
-  if (LS.getItem('__mock_ver') !== '5') { ['__mock_db','__mock_props','att_token'].forEach(k => LS.removeItem(k)); LS.setItem('__mock_ver','5'); }
+  if (LS.getItem('__mock_ver') !== '6') { ['__mock_db','__mock_props','att_token'].forEach(k => LS.removeItem(k)); LS.setItem('__mock_ver','6'); }
   const DB = JSON.parse(LS.getItem('__mock_db') || '{}');      // {sheetName: [[...]]}
   const PROPS = JSON.parse(LS.getItem('__mock_props') || '{}');
   const save = () => { LS.setItem('__mock_db', JSON.stringify(DB)); LS.setItem('__mock_props', JSON.stringify(PROPS)); };
@@ -91,7 +91,7 @@ const COLS = {
                 'Role', 'Status', 'Created On', 'Password Hash'],
   'Attendance': ['Date', 'Day', 'Employee ID', 'Employee Name', 'Branch', 'SM', 'CP Firm', 'Location',
                  'Login Time', 'Late', 'Logout Time', 'Hours Worked', 'Total Calls', 'Connect Calls', 'Connect %',
-                 'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Site Visit Confirmed WTD', 'Status',
+                 'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Booking', 'Site Visit Confirmed WTD', 'Status',
                  'Login Posted At', 'Logout Posted At', 'Admin Note', 'Login Message', 'Logout Message'],
   'Branch Transfers': ['Changed On', 'Employee ID', 'Employee Name', 'From Branch', 'To Branch', 'Effective Date', 'Changed By'],
   'Branches': ['Branch'],
@@ -100,7 +100,7 @@ const COLS = {
   'Settings': ['Setting', 'Value', 'Description'],
 };
 const DATE_COLS = ['Date', 'Joining Date', 'Effective Date'];
-const NUM_COLS = ['Total Calls', 'Connect Calls', 'Connect %', 'Site Visit Done', 'Tomorrow Site Visit', 'Site Visit Confirmed WTD'];
+const NUM_COLS = ['Total Calls', 'Connect Calls', 'Connect %', 'Site Visit Done', 'Tomorrow Site Visit', 'Site Visit Confirmed WTD', 'Booking'];
 const SUMMARY_ROWS = 300;     // employee rows prepared in "Employee Summary"
 
 /* ================= Web page ================= */
@@ -159,7 +159,7 @@ function buildSummaries_(ss) {
   s.getRange(1, 4).setValue('Change the month in B1 (any date in that month). Everything below updates automatically.');
   s.getRange(3, 4).setValue('(used by the formulas, do not edit)');
   const eh = ['Employee ID', 'Employee Name', 'Branch', 'Joining Date', 'Working Days', 'Present', 'Absent', 'Attendance %',
-              'Late Logins', 'Logout Missed', 'Total Calls', 'Connect Calls', 'Connect %', 'Leads', 'Site Visits'];
+              'Late Logins', 'Logout Missed', 'Total Calls', 'Connect Calls', 'Connect %', 'Leads', 'Site Visits', 'Bookings'];
   s.getRange(5, 1, 1, eh.length).setValues([eh]);
   s.getRange(6, 1).setFormula('=IFERROR(SORT(FILTER({' + E('Employee ID') + ',' + E('Full Name') + ',' + E('Branch') + ',' + E('Joining Date') +
     '},' + E('Role') + '="Caller",' + E('Status') + '="Active"),3,TRUE,2,TRUE),"")');
@@ -182,9 +182,10 @@ function buildSummaries_(ss) {
       '=IF(OR(' + ID + '="",N($K' + r + ')=0),"",$L' + r + '/$K' + r + ')',
       W('SUMIFS(' + A('Lead of the Day') + ',' + inMonth + ')'),
       W('SUMIFS(' + A('Site Visit Done') + ',' + inMonth + ')'),
+      W('SUMIFS(' + A('Booking') + ',' + inMonth + ')'),
     ]);
   }
-  s.getRange(6, 5, SUMMARY_ROWS, 11).setFormulas(f);
+  s.getRange(6, 5, SUMMARY_ROWS, 12).setFormulas(f);
   s.setFrozenRows(5);
 
   /* ---- Branch Summary ---- */
@@ -193,7 +194,7 @@ function buildSummaries_(ss) {
   s.getRange(1, 1, 1, 2).setValues([['Month', first]]);
   s.getRange(1, 4).setValue('Change the month in B1. Present days and calls are counted under the branch the caller was in on that day.');
   const bh = ['Branch', 'Active Callers', 'Present Days', 'Late Logins', 'Logout Missed', 'Total Calls', 'Connect Calls',
-              'Connect %', 'Leads', 'Site Visits'];
+              'Connect %', 'Leads', 'Site Visits', 'Bookings'];
   s.getRange(3, 1, 1, bh.length).setValues([bh]);
   s.getRange(4, 1).setFormula('=IFERROR(FILTER(Branches!A2:A,Branches!A2:A<>""),"")');
   const br = A('Branch'), g = [];
@@ -214,9 +215,10 @@ function buildSummaries_(ss) {
       '=IF(OR(' + B + '="",N($F' + r + ')=0),"",$G' + r + '/$F' + r + ')',
       W('SUMIFS(' + A('Lead of the Day') + ',' + inMonth + ')'),
       W('SUMIFS(' + A('Site Visit Done') + ',' + inMonth + ')'),
+      W('SUMIFS(' + A('Booking') + ',' + inMonth + ')'),
     ]);
   }
-  s.getRange(4, 2, 60, 9).setFormulas(g);
+  s.getRange(4, 2, 60, 10).setFormulas(g);
   s.setFrozenRows(3);
 }
 
@@ -252,15 +254,15 @@ function format_(ss) {
   s.getRange('A2:A').setNumberFormat('dd-mmm-yyyy');
   s.getRange('O2:O').setNumberFormat('0%');
   s.setConditionalFormatRules([
-    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Complete').setBackground('#e7f6ef').setFontColor('#0b6b45').setRanges([s.getRange('T2:T')]).build(),
-    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Logout pending').setBackground('#fff4e0').setFontColor('#7a4a00').setRanges([s.getRange('T2:T')]).build(),
-    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Logout missed').setBackground('#fdecea').setFontColor('#8a1f14').setRanges([s.getRange('T2:T')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Complete').setBackground('#e7f6ef').setFontColor('#0b6b45').setRanges([s.getRange('U2:U')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Logout pending').setBackground('#fff4e0').setFontColor('#7a4a00').setRanges([s.getRange('U2:U')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Logout missed').setBackground('#fdecea').setFontColor('#8a1f14').setRanges([s.getRange('U2:U')]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Yes').setBackground('#fff4e0').setFontColor('#7a4a00').setRanges([s.getRange('J2:J')]).build(),
   ]);
-  [100, 50, 130, 160, 190, 140, 90, 100, 85, 50, 85, 80, 70, 75, 70, 75, 75, 85, 90, 120, 160, 160, 200, 60, 60]
+  [100, 50, 130, 160, 190, 140, 90, 100, 85, 50, 85, 80, 70, 75, 70, 75, 75, 85, 90, 75, 120, 160, 160, 200, 60, 60]
     .forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
-  s.hideColumns(24, 2);                                       // full WhatsApp messages – kept for records
-  s.getRange('W1').setNote('Admin can write a note here, e.g. "Logout missed – phone battery dead".');
+  s.hideColumns(25, 2);                                       // full WhatsApp messages – kept for records
+  s.getRange('X1').setNote('Admin can write a note here, e.g. "Logout missed – phone battery dead".');
   // Transfers
   s = ss.getSheetByName('Branch Transfers');
   s.getRange('F2:F').setNumberFormat('dd-mmm-yyyy');
@@ -279,13 +281,13 @@ function format_(ss) {
     SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0.75).setBackground('#fdecea').setFontColor('#8a1f14').setRanges([s.getRange('H6:H')]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0).setFontColor('#c0392b').setRanges([s.getRange('J6:J')]).build(),
   ]);
-  [130, 170, 190, 100, 75, 70, 70, 85, 65, 70, 75, 75, 75, 60, 65].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
+  [130, 170, 190, 100, 75, 70, 70, 85, 65, 70, 75, 75, 75, 60, 65, 75].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
   s = ss.getSheetByName('Branch Summary');
   s.getRange('B1').setNumberFormat('mmmm yyyy').setBackground('#fff4e0').setFontWeight('bold')
     .setDataValidation(SpreadsheetApp.newDataValidation().requireDate().build());
   s.getRange('A1').setFontWeight('bold');
   s.getRange('H4:H').setNumberFormat('0%');
-  [220, 80, 80, 75, 75, 80, 80, 75, 60, 70].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
+  [220, 80, 80, 75, 75, 80, 80, 75, 60, 70, 75].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
   ss.setActiveSheet(ss.getSheetByName('Employees'));
 }
 
@@ -470,7 +472,7 @@ function attendance_() {
       loc: o['Location'], late: o['Late'], message: o['Login Message'] }));
     if (o['Logout Time']) out.push(Object.assign({}, base, { type: 'logout', time: o['Logout Time'], total: o['Total Calls'],
       connect: o['Connect Calls'], lead: o['Lead of the Day'], visitToday: o['Site Visit Done'],
-      visitTom: o['Tomorrow Site Visit'], wtd: o['Site Visit Confirmed WTD'], message: o['Logout Message'] }));
+      visitTom: o['Tomorrow Site Visit'], wtd: o['Site Visit Confirmed WTD'], booking: o['Booking'], message: o['Logout Message'] }));
   });
   return out;
 }
@@ -494,6 +496,7 @@ function buildMessage_(type, dateKey, name, d) {
     'Lead of the day:- ' + d.lead,
     'Site visit done today- ' + d.visitToday,
     'Tomorrow site visit: ' + d.visitTom,
+    'Booking: ' + d.booking,
     'Site visit confirmed WTD: ' + d.wtd,
   ].join('\n');
 }
@@ -569,7 +572,7 @@ const API = {
         if (!st.today.login) throw new Error('Please post your Login first.');
         rec.time = fmt12_(nowMinutes_());           // logout time = server time, cannot be changed
         rec.sm = st.today.login.sm;                 // SM fixed from today's login
-        ['total', 'connect', 'lead', 'visitToday', 'visitTom', 'wtd'].forEach(function (k) {
+        ['total', 'connect', 'lead', 'visitToday', 'visitTom', 'booking', 'wtd'].forEach(function (k) {
           rec[k] = String(d[k] === undefined ? '' : d[k]).trim();
           if (!rec[k]) throw new Error('Please fill all logout fields (put 0 if none).');
         });
@@ -591,7 +594,7 @@ const API = {
           'Hours Worked': om > lm ? Math.floor((om - lm) / 60) + 'h ' + ((om - lm) % 60) + 'm' : '',
           'Total Calls': rec.total, 'Connect Calls': rec.connect, 'Connect %': tot ? Math.round(con * 1000 / tot) / 1000 : '',
           'Lead of the Day': rec.lead, 'Site Visit Done': rec.visitToday, 'Tomorrow Site Visit': rec.visitTom,
-          'Site Visit Confirmed WTD': rec.wtd, 'Status': 'Complete', 'Logout Posted At': posted, 'Logout Message': message }));
+          'Site Visit Confirmed WTD': rec.wtd, 'Booking': rec.booking, 'Status': 'Complete', 'Logout Posted At': posted, 'Logout Message': message }));
       }
       return { message: message, state: callerState_(u) };
     } finally {
@@ -729,13 +732,13 @@ const API = {
     }).map(function (u) {
       const mine = by[u.username] || {}, start = u.joining && u.joining > from ? u.joining : from;
       const e = { username: u.username, name: u.name, phone: u.phone, branch: u.branch, joining: u.joining, active: u.active,
-                  present: 0, absent: 0, late: 0, missed: 0, offWorked: 0, total: 0, connect: 0, lead: 0, visits: 0, daily: [] };
+                  present: 0, absent: 0, late: 0, missed: 0, offWorked: 0, total: 0, connect: 0, lead: 0, visits: 0, booking: 0, daily: [] };
       let loginSum = 0, workMins = 0, workN = 0;
       days.forEach(function (d) {
         if (d < start) return;
         const li = (mine[d] || {}).login, lo = (mine[d] || {}).logout, isOff = offDay >= 0 && dow_(d) === offDay;
         const row = { date: d, day: DAYS_[dow_(d)].slice(0, 3), login: li ? li.time : '', logout: lo ? lo.time : '',
-                      sm: li ? li.sm : '', hours: '', total: '', connect: '', lead: '', visits: '', status: '' };
+                      sm: li ? li.sm : '', hours: '', total: '', connect: '', lead: '', visits: '', booking: '', status: '' };
         if (li) {
           e.present++; if (isOff) e.offWorked++;
           const lm = parse12_(li.time), isLate = lm !== null && lm > lateMin;
@@ -744,8 +747,8 @@ const API = {
           if (lo) {
             const om = parse12_(lo.time);
             if (lm !== null && om !== null && om > lm) { workMins += om - lm; workN++; row.hours = Math.floor((om - lm) / 60) + 'h ' + ((om - lm) % 60) + 'm'; }
-            row.total = lo.total; row.connect = lo.connect; row.lead = lo.lead; row.visits = lo.visitToday;
-            e.total += num_(lo.total); e.connect += num_(lo.connect); e.lead += num_(lo.lead); e.visits += num_(lo.visitToday);
+            row.total = lo.total; row.connect = lo.connect; row.lead = lo.lead; row.visits = lo.visitToday; row.booking = lo.booking || '';
+            e.total += num_(lo.total); e.connect += num_(lo.connect); e.lead += num_(lo.lead); e.visits += num_(lo.visitToday); e.booking += num_(lo.booking);
             row.status = isLate ? 'Late' : 'Present';
           } else if (d < today) { e.missed++; row.status = 'Logout missed'; }
           else row.status = 'Working';
@@ -771,7 +774,7 @@ const API = {
       return { branch: b, callers: es.filter(function (e) { return e.active === 'yes'; }).length,
                present: pr, absent: ab, late: sum('late'), missed: sum('missed'),
                attPct: pr + ab ? Math.round(pr * 100 / (pr + ab)) : null,
-               total: tot, connect: con, connectPct: tot ? Math.round(con * 100 / tot) : null, lead: sum('lead'), visits: sum('visits') };
+               total: tot, connect: con, connectPct: tot ? Math.round(con * 100 / tot) : null, lead: sum('lead'), visits: sum('visits'), booking: sum('booking') };
     });
     return { from: from, to: to, today: today, lateAfter: lateAfter, weeklyOff: weeklyOff, branches: branches, employees: employees };
   },
@@ -792,7 +795,7 @@ const API = {
         const lo = att.filter(function (a) { return a.username === u.username && a.type === 'logout'; })[0];
         return { name: u.name, username: u.username, branch: li ? li.branch : u.branch,
                  login: li ? li.time : '', logout: lo ? lo.time : '', sm: li ? li.sm : '',
-                 total: lo ? lo.total : '', connect: lo ? lo.connect : '' };
+                 total: lo ? lo.total : '', connect: lo ? lo.connect : '', booking: lo ? (lo.booking || '') : '' };
       }),
     };
   },
@@ -833,7 +836,7 @@ const API = {
         const total = 60 + Math.floor(rnd() * 80), con = Math.floor(total * (0.3 + rnd() * 0.3)), om = 18 * 60 + Math.floor(rnd() * 90);
         Object.assign(row, { 'Logout Time': fmt12_(om), 'Hours Worked': Math.floor((om - lm) / 60) + 'h ' + ((om - lm) % 60) + 'm',
           'Total Calls': total, 'Connect Calls': con, 'Connect %': Math.round(con * 1000 / total) / 1000, 'Lead of the Day': Math.floor(rnd() * 4),
-          'Site Visit Done': Math.floor(rnd() * 3), 'Tomorrow Site Visit': Math.floor(rnd() * 3), 'Site Visit Confirmed WTD': Math.floor(rnd() * 6),
+          'Site Visit Done': Math.floor(rnd() * 3), 'Tomorrow Site Visit': Math.floor(rnd() * 3), 'Booking': rnd() < 0.15 ? 1 : 0, 'Site Visit Confirmed WTD': Math.floor(rnd() * 6),
           'Status': 'Complete', 'Logout Posted At': d + ' 19:00' });
       }
       appendObj_('Attendance', row);
@@ -846,7 +849,7 @@ const API = {
   Object.keys(sm).forEach(k => { const tk = api('login',{username:ids[k],password:'1234'}).data.token;
     api('post',{token:tk,type:'login',data:{hour:hh,min:mm,ap:ap,sm:sm[k],cp:'DT',loc:'on site'}}); });
   const tj = api('login',{username:ids.jayshri,password:'1234'}).data.token;
-  api('post',{token:tj,type:'logout',data:{total:'46',connect:'25',lead:'1',visitToday:'1',visitTom:'2',wtd:'3'}});
+  api('post',{token:tj,type:'logout',data:{total:'46',connect:'25',lead:'1',visitToday:'1',visitTom:'2',booking:'1',wtd:'3'}});
   const pr = PropertiesService.getScriptProperties(); Object.keys(pr.getProperties()).forEach(k => pr.deleteProperty(k));
 })();
 </script>
@@ -972,7 +975,7 @@ const API = {
   .sechead h2{margin:0}
   .sechead .tools{display:flex;gap:8px;align-items:center}
   .sechead select,.sechead input{width:auto;padding:7px 10px;font-size:13px}
-  .tops{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}
+  .tops{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:10px}
   .top3{border:1px solid var(--line);border-radius:10px;padding:12px 14px}
   .top3 h3{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin:0 0 8px}
   .top3 ol{margin:0;padding-left:18px;font-size:14px;line-height:1.7}
@@ -1152,8 +1155,10 @@ const API = {
         <div><label for="oVisitToday">Site visit done today</label><input id="oVisitToday" placeholder="e.g. 1"></div>
         <div><label for="oVisitTom">Tomorrow site visit</label><input id="oVisitTom" placeholder="e.g. 2"></div>
       </div>
-      <label for="oWtd">Site visit confirmed WTD</label>
-      <input id="oWtd" placeholder="e.g. 4">
+      <div class="row">
+        <div><label for="oBooking">Booking</label><input id="oBooking" type="number" min="0" inputmode="numeric" placeholder="e.g. 0"></div>
+        <div><label for="oWtd">Site visit confirmed WTD</label><input id="oWtd" placeholder="e.g. 4"></div>
+      </div>
     </div>
 
     <div class="preview" id="preview"></div>
@@ -1193,7 +1198,7 @@ const API = {
     </div>
     <div class="summary" id="rSummary"></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Caller</th><th>Branch</th><th>SM</th><th>Login</th><th>Logout</th><th>Calls (conn.)</th><th>Status</th></tr></thead>
+      <thead><tr><th>Caller</th><th>Branch</th><th>SM</th><th>Login</th><th>Logout</th><th>Calls (conn.)</th><th>Bookings</th><th>Status</th></tr></thead>
       <tbody id="rBody"></tbody>
     </table></div>
     <p class="hint">Full details of every entry are saved in the "Attendance" tab of your Google Sheet.</p>
@@ -1220,7 +1225,7 @@ const API = {
 
       <div class="sechead"><h2>Branch summary</h2><div class="tools"><button type="button" class="small ghost" data-copy="pBranchTable">Copy table</button></div></div>
       <div class="tablewrap"><table id="pBranchTable">
-        <thead><tr><th>Branch</th><th class="num">Callers</th><th class="num">Present days</th><th class="num">Absent days</th><th class="num">Attendance</th><th class="num">Late</th><th class="num">Logout missed</th><th class="num">Total calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th></tr></thead>
+        <thead><tr><th>Branch</th><th class="num">Callers</th><th class="num">Present days</th><th class="num">Absent days</th><th class="num">Attendance</th><th class="num">Late</th><th class="num">Logout missed</th><th class="num">Total calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th><th class="num">Bookings</th></tr></thead>
         <tbody id="pBranches"></tbody>
       </table></div>
 
@@ -1235,6 +1240,7 @@ const API = {
             <option value="name">Name A–Z</option>
             <option value="connect">Most connect calls</option>
             <option value="visits">Most site visits</option>
+            <option value="booking">Most bookings</option>
             <option value="late">Most late logins</option>
             <option value="missed">Most missed logouts</option>
           </select>
@@ -1242,7 +1248,7 @@ const API = {
         </div>
       </div>
       <div class="tablewrap"><table id="pEmpTable">
-        <thead><tr><th>Caller</th><th>Branch</th><th class="num">Present</th><th class="num">Absent</th><th class="num">Attendance</th><th class="num">Late</th><th class="num">Logout missed</th><th>Avg login</th><th class="num">Total calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th></tr></thead>
+        <thead><tr><th>Caller</th><th>Branch</th><th class="num">Present</th><th class="num">Absent</th><th class="num">Attendance</th><th class="num">Late</th><th class="num">Logout missed</th><th>Avg login</th><th class="num">Total calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th><th class="num">Bookings</th></tr></thead>
         <tbody id="pEmps"></tbody>
       </table></div>
       <p class="hint">Tap a caller to see their day-by-day attendance.</p>
@@ -1369,7 +1375,7 @@ const API = {
     <div class="summary" id="eStats"></div>
     <div class="sechead" style="margin-top:16px"><h2>Day by day</h2><button type="button" class="small ghost" data-copy="eTable">Copy table</button></div>
     <div class="tablewrap"><table id="eTable">
-      <thead><tr><th>Date</th><th>Day</th><th>Status</th><th>Login</th><th>Logout</th><th>Hours</th><th>SM</th><th class="num">Calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th></tr></thead>
+      <thead><tr><th>Date</th><th>Day</th><th>Status</th><th>Login</th><th>Logout</th><th>Hours</th><th>SM</th><th class="num">Calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th><th class="num">Bookings</th></tr></thead>
       <tbody id="eDays"></tbody>
     </table></div>
   </div>
@@ -1475,7 +1481,7 @@ function show(st){
    ===================================================== */
 let S = null;          // caller state from server
 let mode = "login";
-const LOGOUT_IDS = ["oTotal","oConnect","oLead","oVisitToday","oVisitTom","oWtd"];
+const LOGOUT_IDS = ["oTotal","oConnect","oLead","oVisitToday","oVisitTom","oBooking","oWtd"];
 
 fill($("lHour"), Array.from({length:12}, (_, i) => String(i+1)), "", "Hour");
 fill($("lMin"),  Array.from({length:60}, (_, i) => pad(i)), "", "Min");
@@ -1593,6 +1599,7 @@ function buildMessage(){
     "Lead of the day:- " + v("oLead"),
     "Site visit done today- " + v("oVisitToday"),
     "Tomorrow site visit: " + v("oVisitTom"),
+    "Booking: " + v("oBooking"),
     "Site visit confirmed WTD: " + v("oWtd"),
   ].join("\n");
 }
@@ -1615,7 +1622,7 @@ function validate(){
     return "";
   }
   const names = { oTotal:"Total calls", oConnect:"Connect calls", oLead:"Lead of the day",
-    oVisitToday:"Site visit done today", oVisitTom:"Tomorrow site visit", oWtd:"Site visit confirmed WTD" };
+    oVisitToday:"Site visit done today", oVisitTom:"Tomorrow site visit", oBooking:"Booking", oWtd:"Site visit confirmed WTD" };
   const empty = LOGOUT_IDS.filter(id => !v(id)).map(id => names[id]);
   if (empty.length) return "Please fill: " + empty.join(", ") + " (put 0 if none).";
   if (Number(v("oConnect")) > Number(v("oTotal"))) return "Connect calls cannot be more than Total calls.";
@@ -1630,7 +1637,7 @@ $("attForm").addEventListener("submit", e => {
   $("fTime").value = fmt12(nowMinutes());
   pending = mode === "login"
     ? { type:"login", data:{ hour:$("lHour").value, min:$("lMin").value, ap:$("lAp").value, sm:$("fSm").value, cp:v("fCp"), loc:getLoc() } }
-    : { type:"logout", data:{ total:v("oTotal"), connect:v("oConnect"), lead:v("oLead"), visitToday:v("oVisitToday"), visitTom:v("oVisitTom"), wtd:v("oWtd") } };
+    : { type:"logout", data:{ total:v("oTotal"), connect:v("oConnect"), lead:v("oLead"), visitToday:v("oVisitToday"), visitTom:v("oVisitTom"), booking:v("oBooking"), wtd:v("oWtd") } };
   $("cTitle").textContent = "Confirm your " + (mode === "login" ? "Login" : "Logout");
   $("cMsg").textContent = buildMessage() + (mode === "logout" ? "\n\n(Logout time is taken at the moment you press Post.)" : "");
   $("cStep1").classList.remove("hidden"); $("cStep2").classList.add("hidden");
@@ -1745,9 +1752,9 @@ function renderReport(){
   $("rBody").innerHTML = rows.length ? rows.map(r => {
     const s = statusOf(r);
     return "<tr><td>"+esc(r.name)+"</td><td>"+esc(r.branch)+"</td><td>"+esc(r.sm||"—")+"</td><td>"+esc(r.login||"—")+
-      "</td><td>"+esc(r.logout||"—")+"</td><td>"+(r.total ? esc(r.total)+" ("+esc(r.connect)+")" : "—")+
+      "</td><td>"+esc(r.logout||"—")+"</td><td>"+(r.total ? esc(r.total)+" ("+esc(r.connect)+")" : "—")+"</td><td>"+(r.booking !== "" && r.booking != null ? esc(r.booking) : "—")+
       '</td><td><span class="pill '+s[1]+'">'+s[0]+"</span></td></tr>";
-  }).join("") : '<tr><td colspan="7" style="color:var(--muted)">No active callers. Add them in the Callers tab.</td></tr>';
+  }).join("") : '<tr><td colspan="8" style="color:var(--muted)">No active callers. Add them in the Callers tab.</td></tr>';
 }
 $("rRemind").onclick = () => {
   if (!R) return;
@@ -1800,7 +1807,7 @@ function renderPeriod(){
     ["Attendance", pr + ab ? Math.round(pr*100/(pr+ab)) + "%" : "—"],
     ["Absent days", ab], ["Late logins", sum("late")], ["Logout missed", sum("missed")],
     ["Total calls", n0(tot)], ["Connect", n0(con) + (tot ? " (" + Math.round(con*100/tot) + "%)" : "")],
-    ["Leads", n0(sum("lead"))], ["Site visits", n0(sum("visits"))]
+    ["Leads", n0(sum("lead"))], ["Site visits", n0(sum("visits"))], ["Bookings", n0(sum("booking"))]
   ].map(s => '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>').join("");
   $("pRules").textContent = niceDate(PR.from) + " to " + niceDate(PR.to) + " · Late = login after " + PR.lateAfter +
     " · Weekly off: " + (PR.weeklyOff === "None" ? "none" : PR.weeklyOff) + " (not counted as absent) · Days before a caller's joining date are not counted.";
@@ -1808,8 +1815,8 @@ function renderPeriod(){
   $("pBranches").innerHTML = brs.map(x => "<tr><td>"+esc(x.branch)+'</td><td class="num">'+x.callers+'</td><td class="num">'+x.present+
     '</td><td class="num">'+x.absent+'</td><td class="num">'+pct(x.attPct)+bar(x.attPct)+'</td><td class="num">'+x.late+'</td><td class="num">'+x.missed+
     '</td><td class="num">'+n0(x.total)+'</td><td class="num">'+n0(x.connect)+(x.connectPct!=null?" ("+x.connectPct+"%)":"")+
-    '</td><td class="num">'+n0(x.lead)+'</td><td class="num">'+n0(x.visits)+"</td></tr>").join("") ||
-    '<tr><td colspan="11" style="color:var(--muted)">No branches.</td></tr>';
+    '</td><td class="num">'+n0(x.lead)+'</td><td class="num">'+n0(x.visits)+'</td><td class="num">'+n0(x.booking)+"</td></tr>").join("") ||
+    '<tr><td colspan="12" style="color:var(--muted)">No branches.</td></tr>';
 
   const top = (k, label, fmt) => {
     const list = emps.filter(e => e[k] != null && e[k] > 0).sort((a, c) => c[k] - a[k]).slice(0, 3);
@@ -1817,7 +1824,8 @@ function renderPeriod(){
       "<li>"+esc(e.name)+" <span>"+fmt(e)+"</span></li>").join("") + "</ol>" : '<span class="hint">No data yet</span>') + "</div>";
   };
   $("pTops").innerHTML = top("connect", "Most connect calls", e => n0(e.connect)) + top("visits", "Most site visits", e => n0(e.visits)) +
-    top("lead", "Most leads", e => n0(e.lead)) + top("attPct", "Best attendance", e => e.attPct + "% (" + e.present + " days)");
+    top("lead", "Most leads", e => n0(e.lead)) + top("booking", "Most bookings", e => n0(e.booking)) +
+    top("attPct", "Best attendance", e => e.attPct + "% (" + e.present + " days)");
 
   const q = v("pSearch").toLowerCase(), k = $("pSort").value;
   const list = emps.filter(e => !q || e.name.toLowerCase().includes(q)).sort((a, c) =>
@@ -1827,8 +1835,8 @@ function renderPeriod(){
     "</td><td>"+esc(e.branch)+'</td><td class="num">'+e.present+'</td><td class="num">'+e.absent+'</td><td class="num">'+pct(e.attPct)+bar(e.attPct)+
     '</td><td class="num">'+e.late+'</td><td class="num">'+e.missed+"</td><td>"+(e.avgLogin||"—")+
     '</td><td class="num">'+n0(e.total)+'</td><td class="num">'+n0(e.connect)+(e.connectPct!=null?" ("+e.connectPct+"%)":"")+
-    '</td><td class="num">'+n0(e.lead)+'</td><td class="num">'+n0(e.visits)+"</td></tr>").join("") ||
-    '<tr><td colspan="12" style="color:var(--muted)">No callers for this filter.</td></tr>';
+    '</td><td class="num">'+n0(e.lead)+'</td><td class="num">'+n0(e.visits)+'</td><td class="num">'+n0(e.booking)+"</td></tr>").join("") ||
+    '<tr><td colspan="13" style="color:var(--muted)">No callers for this filter.</td></tr>';
   document.querySelectorAll("[data-emp]").forEach(r => r.onclick = () => openEmp(r.dataset.emp));
 }
 const statusCls = { "Present":"done", "Late":"warn", "Logout missed":"bad", "Absent":"bad", "Weekly off":"", "Working":"done", "Not logged in":"warn" };
@@ -1838,12 +1846,12 @@ function openEmp(username){
   $("eInfo").textContent = [e.branch, e.phone, e.joining ? "Joined " + niceDate(e.joining) : "", "Login ID: " + e.username].filter(Boolean).join(" · ");
   $("eStats").innerHTML = [["Present", e.present], ["Absent", e.absent], ["Attendance", pct(e.attPct)], ["Late", e.late],
     ["Logout missed", e.missed], ["Avg login", e.avgLogin || "—"],
-    ["Calls", n0(e.total)], ["Connect", n0(e.connect) + (e.connectPct!=null ? " ("+e.connectPct+"%)" : "")], ["Leads", n0(e.lead)], ["Site visits", n0(e.visits)]]
+    ["Calls", n0(e.total)], ["Connect", n0(e.connect) + (e.connectPct!=null ? " ("+e.connectPct+"%)" : "")], ["Leads", n0(e.lead)], ["Site visits", n0(e.visits)], ["Bookings", n0(e.booking)]]
     .map(s => '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>').join("");
   $("eDays").innerHTML = e.daily.map(d => "<tr><td>"+niceDate(d.date)+"</td><td>"+d.day+'</td><td><span class="pill '+(statusCls[d.status]||"")+'">'+d.status+
     "</span></td><td>"+(esc(d.login)||"—")+"</td><td>"+(esc(d.logout)||"—")+"</td><td>"+(d.hours||"—")+"</td><td>"+(esc(d.sm)||"—")+
     '</td><td class="num">'+(esc(d.total)||"—")+'</td><td class="num">'+(esc(d.connect)||"—")+'</td><td class="num">'+(esc(d.lead)||"—")+
-    '</td><td class="num">'+(esc(d.visits)||"—")+"</td></tr>").join("") || '<tr><td colspan="11" style="color:var(--muted)">No days in this period.</td></tr>';
+    '</td><td class="num">'+(esc(d.visits)||"—")+'</td><td class="num">'+(esc(d.booking)||"—")+"</td></tr>").join("") || '<tr><td colspan="12" style="color:var(--muted)">No days in this period.</td></tr>';
   $("empModal").classList.remove("hidden");
 }
 // copy any table as tab-separated text (pastes neatly into Excel / Google Sheets)
@@ -1899,28 +1907,28 @@ $("pExcel").onclick = async () => {
       ["Present days", pr], ["Absent days", ab], ["Attendance %", frac(pr, pr + ab)],
       ["Late logins", sum("late")], ["Logout missed", sum("missed")],
       ["Total calls", tot], ["Connect calls", con], ["Connect %", frac(con, tot)],
-      ["Leads", sum("lead")], ["Site visits", sum("visits")],
+      ["Leads", sum("lead")], ["Site visits", sum("visits")], ["Bookings", sum("booking")],
     ], [22, 22]), "Summary");
     // percentage formats on the summary
     const s0 = wb.Sheets["Summary"]; ["B12", "B17"].forEach(r => { if (s0[r] && typeof s0[r].v === "number") s0[r].z = "0%"; });
 
     XLSX.utils.book_append_sheet(wb, sheetFrom(XLSX, [
-      ["Branch", "Callers", "Present days", "Absent days", "Attendance %", "Late logins", "Logout missed", "Total calls", "Connect calls", "Connect %", "Leads", "Site visits"],
-      ...brs.map(x => [x.branch, x.callers, x.present, x.absent, frac(x.present, x.present + x.absent), x.late, x.missed, x.total, x.connect, frac(x.connect, x.total), x.lead, x.visits])
-    ], [30, 9, 12, 12, 13, 11, 13, 11, 13, 10, 8, 10], [4, 9]), "Branch Summary");
+      ["Branch", "Callers", "Present days", "Absent days", "Attendance %", "Late logins", "Logout missed", "Total calls", "Connect calls", "Connect %", "Leads", "Site visits", "Bookings"],
+      ...brs.map(x => [x.branch, x.callers, x.present, x.absent, frac(x.present, x.present + x.absent), x.late, x.missed, x.total, x.connect, frac(x.connect, x.total), x.lead, x.visits, x.booking])
+    ], [30, 9, 12, 12, 13, 11, 13, 11, 13, 10, 8, 10, 10], [4, 9]), "Branch Summary");
 
     XLSX.utils.book_append_sheet(wb, sheetFrom(XLSX, [
-      ["Employee ID", "Caller", "Phone", "Branch", "Joining date", "Status", "Present", "Absent", "Attendance %", "Late logins", "Logout missed", "Avg login", "Total calls", "Connect calls", "Connect %", "Leads", "Site visits"],
+      ["Employee ID", "Caller", "Phone", "Branch", "Joining date", "Status", "Present", "Absent", "Attendance %", "Late logins", "Logout missed", "Avg login", "Total calls", "Connect calls", "Connect %", "Leads", "Site visits", "Bookings"],
       ...emps.slice().sort((a, c) => a.branch.localeCompare(c.branch) || a.name.localeCompare(c.name)).map(e =>
         [e.username, e.name, e.phone || "", e.branch, niceDate(e.joining), e.active === "yes" ? "Active" : "Inactive", e.present, e.absent,
-         frac(e.present, e.present + e.absent), e.late, e.missed, e.avgLogin || "", e.total, e.connect, frac(e.connect, e.total), e.lead, e.visits])
-    ], [22, 22, 16, 28, 13, 9, 8, 8, 13, 11, 13, 10, 11, 13, 10, 7, 10], [8, 14]), "Employee Attendance");
+         frac(e.present, e.present + e.absent), e.late, e.missed, e.avgLogin || "", e.total, e.connect, frac(e.connect, e.total), e.lead, e.visits, e.booking])
+    ], [22, 22, 16, 28, 13, 9, 8, 8, 13, 11, 13, 10, 11, 13, 10, 7, 10, 10], [8, 14]), "Employee Attendance");
 
-    const daily = [["Date", "Day", "Employee ID", "Caller", "Branch", "Status", "Login", "Logout", "Hours", "SM", "Total calls", "Connect calls", "Leads", "Site visits"]];
+    const daily = [["Date", "Day", "Employee ID", "Caller", "Branch", "Status", "Login", "Logout", "Hours", "SM", "Total calls", "Connect calls", "Leads", "Site visits", "Bookings"]];
     emps.forEach(e => e.daily.slice().reverse().forEach(d => daily.push([niceDate(d.date), d.day, e.username, e.name, e.branch, d.status,
-      d.login, d.logout, d.hours, d.sm, numOr(d.total), numOr(d.connect), numOr(d.lead), numOr(d.visits)])));
+      d.login, d.logout, d.hours, d.sm, numOr(d.total), numOr(d.connect), numOr(d.lead), numOr(d.visits), numOr(d.booking)])));
     daily.splice(1, daily.length, ...daily.slice(1).sort((a, c) => a[0].split("-").reverse().join("").localeCompare(c[0].split("-").reverse().join("")) || a[3].localeCompare(c[3])));
-    XLSX.utils.book_append_sheet(wb, sheetFrom(XLSX, daily, [12, 6, 22, 22, 28, 14, 10, 10, 9, 18, 11, 13, 7, 10]), "Daily Details");
+    XLSX.utils.book_append_sheet(wb, sheetFrom(XLSX, daily, [12, 6, 22, 22, 28, 14, 10, 10, 9, 18, 11, 13, 7, 10, 10]), "Daily Details");
 
     const name = "Attendance_Report_" + niceDate(PR.from) + "_to_" + niceDate(PR.to) + (b ? "_" + b.replace(/[^A-Za-z0-9]+/g, "_") : "") + ".xlsx";
     XLSX.writeFile(wb, name);
