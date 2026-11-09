@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<base target="_top">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team Attendance</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f3f5f4; --card:#fff; --ink:#1b2420; --muted:#66736d; --line:#dde3e0;
+    --brand:#128c7e; --brand-dark:#0b6b60; --wa:#25d366; --err:#c0392b;
+    --warn-bg:#fff4e0; --warn-line:#f0b45a; --warn-ink:#7a4a00;
+    --bad-bg:#fdecea; --bad-line:#e8a39b; --bad-ink:#8a1f14;
+    --ok-bg:#e7f6ef; --ok-ink:#0b6b45;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);
+    min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:28px 14px}
+  .card{background:var(--card);width:100%;max-width:440px;border-radius:16px;
+    box-shadow:0 4px 24px rgba(0,0,0,.07);padding:26px}
+  .card.wide{max-width:980px}
+  h1{font-size:22px;margin:0 0 4px} h2{font-size:17px;margin:0 0 10px}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 18px}
+  label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
+  input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;
+    font:inherit;font-size:15px;background:#fff;color:var(--ink)}
+  .datefield{cursor:pointer;padding-left:38px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23128c7e' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M16 3v4M8 3v4M3 10h18'/%3E%3C/svg%3E") no-repeat 12px center !important}
+  .cal{position:fixed;z-index:40;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:10px}
+  .cal button{width:auto;margin:0;padding:0;background:none;color:var(--ink);font-size:14px;border-radius:8px}
+  .cal-head{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+  .cal-head select{padding:6px 8px;font-size:14px;border-radius:8px}
+  .cal-head [data-nav]{font-size:22px;line-height:1;padding:4px 10px;color:var(--brand)}
+  .cal-head [data-nav]:hover{background:#eef2f0}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+  .cal-dow{font-size:11px;font-weight:600;color:var(--muted);padding:4px 0}
+  .cal-day{height:36px}
+  .cal-day:hover{background:#eef2f0}
+  .cal-day.today{outline:1px solid var(--brand)}
+  .cal-day.sel{background:var(--brand) !important;color:#fff}
+  .cal-day:disabled{color:#c9d1cd;cursor:not-allowed;background:none}
+  .cal-foot{display:flex;justify-content:space-between;margin-top:8px;border-top:1px solid var(--line);padding-top:8px}
+  .cal-foot button{color:var(--brand);font-weight:600;padding:6px 10px}
+  .cal-foot button:hover{background:#eef2f0}
+  textarea{min-height:150px;resize:vertical;line-height:1.5}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--brand);outline-offset:-1px;border-color:transparent}
+  input[readonly],select:disabled,input:disabled{background:#f7f9f8;color:var(--ink);opacity:1}
+  .phone{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .phone:focus-within{outline:2px solid var(--brand);outline-offset:-1px;border-color:transparent}
+  .phone span{background:#eef2f0;color:var(--ink);font-weight:600;padding:11px 12px;border-right:1px solid var(--line);user-select:none}
+  .phone input{border:0;border-radius:0;outline:none !important}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row.one{grid-template-columns:1fr}
+  .t3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  button,.btn{display:block;text-align:center;text-decoration:none;width:100%;margin-top:20px;padding:13px;border:0;border-radius:10px;font:inherit;
+    font-size:15px;font-weight:600;cursor:pointer;background:var(--brand);color:#fff}
+  button:hover{background:var(--brand-dark)}
+  button:disabled{background:#c9d1cd;color:#fff;cursor:not-allowed}
+  .wa{background:var(--wa) !important;color:#0b2e17 !important}
+  .ghost{background:transparent !important;color:var(--muted) !important;border:1px solid var(--line) !important;margin-top:10px}
+  .small{width:auto;display:inline-block;margin:0;padding:7px 11px;font-size:13px;border-radius:8px}
+  .err{color:var(--err);font-size:13px;margin-top:10px;min-height:16px}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:10px}
+  .who{font-size:14px;color:var(--muted)} .who b{color:var(--ink)}
+  .link{background:none !important;border:0;color:var(--brand);font-weight:600;width:auto;margin:0;padding:0;font-size:14px}
+  .link:hover{text-decoration:underline}
+  .badge{display:inline-block;font-size:12px;font-weight:600;background:#eef2f0;color:var(--muted);padding:3px 9px;border-radius:999px;margin-left:6px}
+
+  .seg{display:grid;grid-template-columns:1fr 1fr;background:#eef2f0;border-radius:12px;padding:4px;gap:4px;margin-bottom:6px}
+  .seg.five{grid-template-columns:repeat(5,1fr)}
+  .quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .quick button{width:auto;margin:0;padding:6px 12px;font-size:13px;background:#eef2f0;color:var(--ink);border-radius:999px}
+  .quick button:hover{background:#dfe7e3}
+  .sechead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:26px;flex-wrap:wrap}
+  .sechead h2{margin:0}
+  .sechead .tools{display:flex;gap:8px;align-items:center}
+  .sechead select,.sechead input{width:auto;padding:7px 10px;font-size:13px}
+  .tops{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}
+  .top3{border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .top3 h3{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin:0 0 8px}
+  .top3 ol{margin:0;padding-left:18px;font-size:14px;line-height:1.7}
+  .top3 ol span{color:var(--muted)}
+  tr.click{cursor:pointer} tr.click:hover td{background:#f7f9f8}
+  td.num,th.num{text-align:right}
+  .bar{display:inline-block;width:46px;height:6px;background:#eef2f0;border-radius:3px;vertical-align:middle;margin-left:6px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--brand)}
+  .bar i.low{background:var(--err)}
+  .modal.wide{max-width:900px}
+  .seg button{margin:0;padding:10px;background:transparent;color:var(--muted);border-radius:9px;font-size:14px}
+  .seg button:hover{background:rgba(255,255,255,.6)}
+  .seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .tick{color:var(--ok-ink);margin-left:4px}
+  .status{display:flex;gap:8px;margin:12px 0 4px;flex-wrap:wrap}
+  .pill{font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;background:#eef2f0;color:var(--muted)}
+  .pill.done{background:var(--ok-bg);color:var(--ok-ink)}
+  .pill.bad{background:var(--bad-bg);color:var(--bad-ink)}
+  .pill.warn{background:var(--warn-bg);color:var(--warn-ink)}
+
+  .alert{border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.45;margin-top:14px;border:1px solid}
+  .alert b{display:block;margin-bottom:2px}
+  .alert.warn{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn-ink)}
+  .alert.bad{background:var(--bad-bg);border-color:var(--bad-line);color:var(--bad-ink)}
+  .alert.ok{background:var(--ok-bg);border-color:#9fd8bd;color:var(--ok-ink)}
+  .alert button{margin-top:10px;padding:9px;font-size:14px}
+
+  .preview{background:#0b141a;color:#e9edef;border-radius:10px;padding:12px 14px;margin-top:18px;
+    font-size:14px;line-height:1.55;white-space:pre-wrap;text-align:left}
+  .preview .h{color:#f7c35f;font-weight:600}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
+  .hidden{display:none !important}
+  .history{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}
+  .history h3{font-size:14px;margin:0 0 8px}
+  .history ul{list-style:none;padding:0;margin:0;font-size:13px;color:var(--muted)}
+  .history li{padding:6px 0;border-bottom:1px dashed var(--line)}
+  .miss{color:var(--err);font-weight:600}
+
+  /* tables */
+  .tablewrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:10px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{background:#f7f9f8;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+  tr:last-child td{border-bottom:0}
+  td .acts{display:flex;gap:6px}
+  .toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:14px}
+  .toolbar > div{min-width:170px}
+  .toolbar label{margin-top:0}
+  .toolbar button{width:auto;margin:0;padding:11px 16px}
+  .summary{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .stat{background:#f7f9f8;border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:120px}
+  .stat b{display:block;font-size:22px}
+  .stat span{font-size:12px;color:var(--muted)}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media (max-width:700px){ .grid3{grid-template-columns:1fr} .seg.five{grid-template-columns:1fr 1fr} .tops{grid-template-columns:1fr 1fr} }
+
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+  .modal{background:#fff;border-radius:14px;max-width:400px;width:100%;padding:22px;max-height:92vh;overflow:auto}
+  .modal .icon{font-size:34px;line-height:1;text-align:center}
+  .modal h2{font-size:18px;margin:10px 0 6px;text-align:center}
+  .modal p{font-size:14px;color:var(--muted);margin:0;text-align:center}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1b2420;color:#fff;
+    padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;max-width:90%;z-index:20}
+  .toast.show{opacity:1}
+  .loading{position:fixed;inset:0;background:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;z-index:30;font-weight:600;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<div class="loading hidden" id="loading">Please wait…</div>
+
+<!-- ================= SIGN IN ================= -->
+<div class="card" id="signInView">
+  <h1>Employee Sign in</h1>
+  <p class="sub">Sign in with the Login ID and password given by your admin.</p>
+  <form id="signInForm">
+    <label for="uname">Login ID</label>
+    <input id="uname" autocomplete="username" autocapitalize="none" placeholder="e.g. vivekjadhao3210" required>
+    <label for="pwd">Password</label>
+    <input id="pwd" type="password" autocomplete="current-password" placeholder="••••••" required>
+    <button type="submit">Sign in</button>
+    <div class="err" id="signInErr"></div>
+  </form>
+</div>
+
+<!-- ================= CALLER ================= -->
+<div class="card hidden" id="callerView">
+  <div class="top">
+    <div class="who">Signed in as <b id="whoName"></b><span class="badge" id="whoBranch"></span></div>
+    <button class="link" data-signout>Sign out</button>
+  </div>
+
+  <div class="seg">
+    <button type="button" id="tabLogin" class="on">Login</button>
+    <button type="button" id="tabLogout">Logout</button>
+  </div>
+  <div class="status">
+    <span class="pill" id="pillLogin"></span>
+    <span class="pill" id="pillLogout"></span>
+  </div>
+
+  <div class="alert bad hidden" id="remindToday">
+    <b>⏰ Kindly post the logout</b>
+    You posted your Login today at <span id="rtLoginTime"></span> but have not posted your Logout yet.
+    <button type="button" class="wa" id="rtGo">Post Logout now</button>
+  </div>
+  <div class="alert warn hidden" id="remindPast"></div>
+  <div class="alert hidden" id="doneBox"></div>
+
+  <form id="attForm">
+    <div class="row" id="dtRow">
+      <div><label>Date</label><input id="fDate" readonly></div>
+      <div id="timeCol"><label id="timeLabel">Logout time</label><input id="fTime" readonly></div>
+    </div>
+    <div id="loginTimeBox">
+      <label for="lHour">Login time</label>
+      <div class="t3">
+        <select id="lHour" aria-label="Hour"></select>
+        <select id="lMin" aria-label="Minute"></select>
+        <select id="lAp" aria-label="AM or PM"><option>AM</option><option>PM</option></select>
+      </div>
+    </div>
+
+    <label>Caller name</label>
+    <input id="fCaller" readonly>
+
+    <label for="fSm">SM name <span id="smLock" class="hidden" style="font-weight:400;color:var(--muted)">🔒 from today's Login</span></label>
+    <select id="fSm"></select>
+
+    <div id="loginFields">
+      <label for="fCp">CP firm</label>
+      <input id="fCp" placeholder="e.g. DT">
+      <label for="fLoc">Location</label>
+      <select id="fLoc"></select>
+      <input id="fLocOther" class="hidden" placeholder="Type location" style="margin-top:8px">
+    </div>
+
+    <div id="logoutFields" class="hidden">
+      <div class="row">
+        <div><label for="oTotal">Total calls</label><input id="oTotal" type="number" min="0" inputmode="numeric" placeholder="0"></div>
+        <div><label for="oConnect">Connect calls</label><input id="oConnect" type="number" min="0" inputmode="numeric" placeholder="0"></div>
+      </div>
+      <label for="oLead">Lead of the day</label>
+      <input id="oLead" placeholder="e.g. 2 or client name">
+      <div class="row">
+        <div><label for="oVisitToday">Site visit done today</label><input id="oVisitToday" placeholder="e.g. 1"></div>
+        <div><label for="oVisitTom">Tomorrow site visit</label><input id="oVisitTom" placeholder="e.g. 2"></div>
+      </div>
+      <label for="oWtd">Site visit confirmed WTD</label>
+      <input id="oWtd" placeholder="e.g. 4">
+    </div>
+
+    <div class="preview" id="preview"></div>
+    <p class="hint">This is exactly what will be pasted into WhatsApp. Choose your group there and send.</p>
+
+    <button type="submit" class="wa" id="submitBtn">Submit</button>
+    <div class="err" id="formErr"></div>
+  </form>
+
+  <div class="history">
+    <h3>Your last 10 days</h3>
+    <ul id="histList"></ul>
+  </div>
+</div>
+
+<!-- ================= ADMIN ================= -->
+<div class="card wide hidden" id="adminView">
+  <div class="top">
+    <div><h1 style="margin:0">Admin panel</h1><div class="who">Signed in as <b id="adminName"></b></div></div>
+    <button class="link" data-signout>Sign out</button>
+  </div>
+
+  <div class="seg five">
+    <button type="button" data-atab="report" class="on">Today</button>
+    <button type="button" data-atab="reports">Reports</button>
+    <button type="button" data-atab="callers">Callers</button>
+    <button type="button" data-atab="lists">Settings</button>
+    <button type="button" data-atab="transfers">Branch history</button>
+  </div>
+
+  <!-- Attendance report -->
+  <section id="a_report">
+    <div class="toolbar">
+      <div><label for="rDate">Date</label><input id="rDate" type="date"></div>
+      <div><label for="rBranch">Branch</label><select id="rBranch"></select></div>
+      <button type="button" class="wa" id="rRemind">Send logout reminder to group</button>
+    </div>
+    <div class="summary" id="rSummary"></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Caller</th><th>Branch</th><th>SM</th><th>Login</th><th>Logout</th><th>Calls (conn.)</th><th>Status</th></tr></thead>
+      <tbody id="rBody"></tbody>
+    </table></div>
+    <p class="hint">Full details of every entry are saved in the "Attendance" tab of your Google Sheet.</p>
+  </section>
+
+  <!-- Reports -->
+  <section id="a_reports" class="hidden">
+    <div class="toolbar">
+      <div><label for="pFrom">From</label><input id="pFrom" type="date"></div>
+      <div><label for="pTo">To</label><input id="pTo" type="date"></div>
+      <div><label for="pBranch">Branch</label><select id="pBranch"></select></div>
+      <button type="button" id="pLoad">Show report</button>
+    </div>
+    <div class="quick">
+      <button type="button" data-range="today">Today</button>
+      <button type="button" data-range="7">Last 7 days</button>
+      <button type="button" data-range="month">This month</button>
+      <button type="button" data-range="lastmonth">Last month</button>
+    </div>
+    <div id="pOut" class="hidden">
+      <div class="summary" id="pSummary"></div>
+      <p class="hint" id="pRules"></p>
+
+      <div class="sechead"><h2>Branch summary</h2><div class="tools"><button type="button" class="small ghost" data-copy="pBranchTable">Copy table</button></div></div>
+      <div class="tablewrap"><table id="pBranchTable">
+        <thead><tr><th>Branch</th><th class="num">Callers</th><th class="num">Present days</th><th class="num">Absent days</th><th class="num">Attendance</th><th class="num">Late</th><th class="num">Logout missed</th><th class="num">Total calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th></tr></thead>
+        <tbody id="pBranches"></tbody>
+      </table></div>
+
+      <div class="sechead"><h2>Top performers</h2></div>
+      <div class="tops" id="pTops"></div>
+
+      <div class="sechead"><h2>Employee attendance</h2>
+        <div class="tools">
+          <input id="pSearch" placeholder="Search name">
+          <select id="pSort">
+            <option value="attPct">Lowest attendance first</option>
+            <option value="name">Name A–Z</option>
+            <option value="connect">Most connect calls</option>
+            <option value="visits">Most site visits</option>
+            <option value="late">Most late logins</option>
+            <option value="missed">Most missed logouts</option>
+          </select>
+          <button type="button" class="small ghost" data-copy="pEmpTable">Copy table</button>
+        </div>
+      </div>
+      <div class="tablewrap"><table id="pEmpTable">
+        <thead><tr><th>Caller</th><th>Branch</th><th class="num">Present</th><th class="num">Absent</th><th class="num">Attendance</th><th class="num">Late</th><th class="num">Logout missed</th><th>Avg login</th><th class="num">Total calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th></tr></thead>
+        <tbody id="pEmps"></tbody>
+      </table></div>
+      <p class="hint">Tap a caller to see their day-by-day attendance.</p>
+    </div>
+  </section>
+
+  <!-- Callers -->
+  <section id="a_callers" class="hidden">
+    <div class="toolbar">
+      <div><label for="cSearch">Search</label><input id="cSearch" placeholder="Name, phone or Login ID"></div>
+      <div><label for="cBranch">Branch</label><select id="cBranch"></select></div>
+      <button type="button" id="cAdd">+ Add caller</button>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Name</th><th>Phone</th><th>Login ID</th><th>Branch</th><th>Joining date</th><th>Role</th><th>Status</th><th></th></tr></thead>
+      <tbody id="cBody"></tbody>
+    </table></div>
+  </section>
+
+  <!-- Lists -->
+  <section id="a_lists" class="hidden">
+    <p class="sub" style="margin-top:14px">One per line. These lists appear in the callers' dropdowns.</p>
+    <div class="grid3">
+      <div><label for="lBranches">Branches / projects</label><textarea id="lBranches"></textarea></div>
+      <div><label for="lSms">SM names</label><textarea id="lSms"></textarea></div>
+      <div><label for="lLocs">Locations</label><textarea id="lLocs"></textarea></div>
+    </div>
+    <div class="grid3" style="margin-top:6px">
+      <div><label for="lRemind">Logout reminder time (24-hour)</label><input id="lRemind" placeholder="19:00"></div>
+      <div><label for="lLate">Login counted late after (24-hour)</label><input id="lLate" placeholder="10:00"></div>
+      <div><label for="lOff">Weekly off day</label><select id="lOff"><option>Monday</option><option>Sunday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option><option value="None">No weekly off</option></select></div>
+    </div>
+    <button type="button" id="lSave" style="max-width:220px">Save settings</button>
+    <div class="err" id="lErr"></div>
+  </section>
+
+  <!-- Transfers -->
+  <section id="a_transfers" class="hidden">
+    <div class="tablewrap"><table>
+      <thead><tr><th>Changed on</th><th>Caller</th><th>From</th><th>To</th><th>Effective</th><th>By</th></tr></thead>
+      <tbody id="tBody"></tbody>
+    </table></div>
+  </section>
+</div>
+
+<!-- ================= MODALS ================= -->
+<div class="modal-bg hidden" id="modal">
+  <div class="modal">
+    <div class="icon" id="mIcon">⚠️</div>
+    <h2 id="mTitle"></h2>
+    <p id="mText"></p>
+    <button type="button" id="mOk">OK</button>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="confirm">
+  <div class="modal">
+    <div id="cStep1">
+      <div class="icon">⚠️</div>
+      <h2 id="cTitle"></h2>
+      <div class="alert bad">
+        <b>This cannot be changed later.</b>
+        Once posted, you cannot edit or post it again today. Kindly reconfirm your details before posting.
+      </div>
+      <div class="preview" id="cMsg" style="margin-top:12px"></div>
+      <button type="button" class="wa" id="cOk">Yes, details are correct – Post</button>
+      <button type="button" class="ghost" id="cEdit">No, go back and edit</button>
+    </div>
+    <div id="cStep2" class="hidden">
+      <div class="icon">✅</div>
+      <h2 id="c2Title">Saved</h2>
+      <p>Now open WhatsApp, choose your group and press send.</p>
+      <div class="preview" id="c2Msg"></div>
+      <a class="btn wa" id="c2Wa" href="#" target="_blank" rel="noopener">Open WhatsApp</a>
+      <button type="button" class="ghost" id="c2Copy">Copy message</button>
+      <button type="button" class="ghost" id="c2Close">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="userModal">
+  <div class="modal">
+    <h2 id="uTitle">Add caller</h2>
+    <form id="userForm">
+      <div class="row"><div><label for="uFirst">First name</label><input id="uFirst" placeholder="e.g. Vivek" autocapitalize="words"></div><div><label for="uLast">Last name</label><input id="uLast" placeholder="e.g. Jadhao" autocapitalize="words"></div></div>
+      <label for="uPhone">Phone number</label><div class="phone"><span>+91</span><input id="uPhone" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number"></div>
+      <div id="uIdBox" class="hidden">
+        <label>Login ID</label>
+        <div class="phone"><input id="uUser" readonly style="background:#f7f9f8"><button type="button" class="small" id="uReset" style="border-radius:0;white-space:nowrap">Reset password</button></div>
+      </div>
+      <div id="uAutoNote" class="alert ok" style="font-size:13px">🔑 Login ID and password will be created automatically after you press Save.</div>
+      <div id="uBranchBox"><label for="uBranch">Branch / project</label><select id="uBranch"></select></div>
+      <div id="uBranchNow" class="hint hidden"></div>
+      <label for="uJoin">Joining date <span style="font-weight:400;color:var(--muted)">(tap to open calendar)</span></label><input id="uJoin" type="date">
+      <div class="row">
+        <div><label for="uRole">Role</label><select id="uRole"><option value="caller">Caller</option><option value="admin">Admin</option></select></div>
+        <div><label for="uActive">Status</label><select id="uActive"><option value="yes">Active</option><option value="no">Inactive (left)</option></select></div>
+      </div>
+      <button type="submit">Save</button>
+      <button type="button" class="ghost" data-close="userModal">Cancel</button>
+      <div class="err" id="uErr"></div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="trModal">
+  <div class="modal">
+    <h2>Change branch</h2>
+    <p id="trWho"></p>
+    <label for="trBranch">New branch</label><select id="trBranch"></select>
+    <label for="trDate">Effective from</label><input id="trDate" type="date">
+    <button type="button" id="trSave">Move to new branch</button>
+    <button type="button" class="ghost" data-close="trModal">Cancel</button>
+    <div class="err" id="trErr"></div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="empModal">
+  <div class="modal wide">
+    <div class="top" style="margin-bottom:6px">
+      <div><h2 id="eName" style="text-align:left;margin:0"></h2><div class="who" id="eInfo"></div></div>
+      <button type="button" class="small ghost" data-close="empModal" style="margin:0">Close</button>
+    </div>
+    <div class="summary" id="eStats"></div>
+    <div class="sechead" style="margin-top:16px"><h2>Day by day</h2><button type="button" class="small ghost" data-copy="eTable">Copy table</button></div>
+    <div class="tablewrap"><table id="eTable">
+      <thead><tr><th>Date</th><th>Day</th><th>Status</th><th>Login</th><th>Logout</th><th>Hours</th><th>SM</th><th class="num">Calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th></tr></thead>
+      <tbody id="eDays"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="credModal">
+  <div class="modal">
+    <div class="icon">🔑</div>
+    <h2 id="crTitle">Caller added</h2>
+    <p>Share these login details with <b id="crName"></b>.</p>
+    <div class="preview" id="crBox" style="font-size:15px"></div>
+    <div class="alert warn" style="font-size:13px"><b>The password is shown only now.</b>Send it now or note it down. If it is lost, use “Reset password” in Edit.</div>
+    <a class="btn wa" id="crWa" href="#" target="_blank" rel="noopener">Send to caller on WhatsApp</a>
+    <button type="button" class="ghost" id="crCopy">Copy login details</button>
+    <button type="button" id="crDone">Done</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= helpers ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pad = n => String(n).padStart(2, "0");
+const v = id => $(id).value.trim();
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,x){ try{ localStorage.setItem(k,x); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+function msgDate(key){ const p = key.split("-"); return Number(p[2]) + "-" + Number(p[1]) + "-" + p[0].slice(2); }
+function niceDate(key){ if(!key) return ""; const p = key.split("-"); return p.length===3 ? p[2]+"-"+p[1]+"-"+p[0] : key; }
+function fmt12(mins){ let h=Math.floor(mins/60), m=mins%60; const ap=h>=12?"PM":"AM"; h=h%12||12; return h+":"+pad(m)+" "+ap; }
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),2600); }
+function popup(title, text, icon){ $("mTitle").textContent=title; $("mText").textContent=text; $("mIcon").textContent=icon||"⚠️"; $("modal").classList.remove("hidden"); }
+$("mOk").onclick = () => $("modal").classList.add("hidden");
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => $(b.dataset.close).classList.add("hidden"));
+function busy(on){ $("loading").classList.toggle("hidden", !on); }
+function fill(sel, items, selected, placeholder){
+  sel.innerHTML = (placeholder ? '<option value="">'+esc(placeholder)+'</option>' : "") +
+    items.map(x => '<option value="'+esc(x)+'">'+esc(x)+'</option>').join("");
+  if (selected != null && [...sel.options].some(o => o.value === selected)) sel.value = selected;
+}
+
+/* server call */
+let token = store.get("att_token");
+function call(action, params){
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler(r => {
+        if (r && r.ok) return resolve(r.data);
+        const err = (r && r.error) || "No response from server";
+        if (err === "SESSION_EXPIRED"){
+          const wasIn = $("signInView").classList.contains("hidden");
+          signOut();
+          if (wasIn) popup("Please sign in again", "Your session has ended. Please sign in again.");
+        }
+        reject(new Error(err));
+      })
+      .withFailureHandler(e => reject(new Error((e && e.message) || "Network problem. Please check internet and try again.")))
+      .api(action, Object.assign({ token }, params || {}));
+  });
+}
+
+/* ================= sign in / out ================= */
+$("signInForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("signInErr").textContent = "";
+  busy(true);
+  try{
+    const st = await call("login", { username: v("uname"), password: $("pwd").value });
+    token = st.token; store.set("att_token", token);
+    $("pwd").value = "";
+    show(st);
+  }catch(err){ if (err.message !== "SESSION_EXPIRED") $("signInErr").textContent = err.message; }
+  busy(false);
+});
+document.querySelectorAll("[data-signout]").forEach(b => b.onclick = signOut);
+function signOut(){
+  token = null; store.del("att_token");
+  ["callerView","adminView"].forEach(id => $(id).classList.add("hidden"));
+  $("signInView").classList.remove("hidden");
+}
+function show(st){
+  $("signInView").classList.add("hidden");
+  if (st.isAdmin){ $("callerView").classList.add("hidden"); $("adminView").classList.remove("hidden"); startAdmin(st); }
+  else { $("adminView").classList.add("hidden"); $("callerView").classList.remove("hidden"); startCaller(st); }
+}
+
+/* =====================================================
+   CALLER
+   ===================================================== */
+let S = null;          // caller state from server
+let mode = "login";
+const LOGOUT_IDS = ["oTotal","oConnect","oLead","oVisitToday","oVisitTom","oWtd"];
+
+fill($("lHour"), Array.from({length:12}, (_, i) => String(i+1)), "", "Hour");
+fill($("lMin"),  Array.from({length:60}, (_, i) => pad(i)), "", "Min");
+
+function startCaller(st){
+  S = st;
+  $("whoName").textContent = st.user.name;
+  $("whoBranch").textContent = st.user.branch || "";
+  $("fCaller").value = st.user.name;
+  const last = JSON.parse(store.get("att_last_" + st.user.username) || "{}");
+  fill($("fSm"), st.config.sms, last.sm || "", "Select SM");
+  fill($("fLoc"), [...st.config.locations, "Other…"], last.loc || st.config.locations[0]);
+  if (!$("fCp").value) $("fCp").value = last.cp || "";
+  setMode(st.today.login && !st.today.logout ? "logout" : "login");
+}
+
+$("tabLogin").onclick = () => setMode("login");
+$("tabLogout").onclick = () => setMode("logout");
+$("rtGo").onclick = () => setMode("logout");
+
+function setMode(m){
+  mode = m;
+  $("tabLogin").classList.toggle("on", m === "login");
+  $("tabLogout").classList.toggle("on", m === "logout");
+  $("loginFields").classList.toggle("hidden", m !== "login");
+  $("logoutFields").classList.toggle("hidden", m !== "logout");
+  $("formErr").textContent = "";
+  refresh();
+}
+
+function nowMinutes(){ const d = new Date(); return d.getHours()*60 + d.getMinutes(); }
+
+function refresh(){
+  if (!S) return;
+  const t = S.today, posted = t[mode];
+  $("fDate").value = msgDate(t.date);
+
+  // time: login = editable pickers until posted; logout = locked server time
+  const editLogin = mode === "login" && !posted;
+  $("loginTimeBox").classList.toggle("hidden", !editLogin);
+  $("timeCol").classList.toggle("hidden", editLogin);
+  $("dtRow").classList.toggle("one", editLogin);
+  $("timeLabel").textContent = mode === "login" ? "Login time" : "Logout time";
+  $("fTime").value = posted ? posted.time : fmt12(nowMinutes());
+
+  $("pillLogin").textContent  = t.login  ? "Login: " + t.login.time   : "Login: not posted";
+  $("pillLogout").textContent = t.logout ? "Logout: " + t.logout.time : "Logout: not posted";
+  $("pillLogin").classList.toggle("done", !!t.login);
+  $("pillLogout").classList.toggle("done", !!t.logout);
+  $("tabLogin").innerHTML  = "Login"  + (t.login  ? '<span class="tick">✓</span>' : "");
+  $("tabLogout").innerHTML = "Logout" + (t.logout ? '<span class="tick">✓</span>' : "");
+
+  const box = $("doneBox"); let blocked = false;
+  box.className = "alert hidden";
+  if (posted){
+    blocked = true; box.className = "alert warn";
+    box.innerHTML = "<b>⚠️ " + (mode==="login"?"Login":"Logout") + " already posted today</b>You posted your " + mode +
+      " at " + esc(posted.time) + ". Only one " + mode + " is allowed per day.";
+  } else if (mode === "logout" && !t.login){
+    blocked = true; box.className = "alert warn";
+    box.innerHTML = "<b>⚠️ Post your Login first</b>You can post the Logout only after today's Login.";
+  }
+  $("submitBtn").disabled = blocked;
+  $("submitBtn").textContent = blocked ? (posted ? "Already posted today" : "Login required first")
+    : "Submit " + (mode==="login"?"Login":"Logout") + " & open WhatsApp";
+  ["fCp","fSm","fLoc","fLocOther","lHour","lMin","lAp",...LOGOUT_IDS].forEach(id => $(id).disabled = blocked);
+  if (mode === "logout"){
+    if (t.login) fill($("fSm"), S.config.sms.includes(t.login.sm) ? S.config.sms : [t.login.sm, ...S.config.sms], t.login.sm);
+    $("fSm").disabled = true;
+  } else if (!t.login) {
+    $("fSm").disabled = false;
+  }
+  $("smLock").classList.toggle("hidden", mode !== "logout");
+
+  // reminders
+  const [rh, rm] = (S.config.reminderAt || "19:00").split(":").map(Number);
+  const late = nowMinutes() >= rh*60 + rm;
+  const need = t.login && !t.logout && late;
+  $("remindToday").classList.toggle("hidden", !need || mode === "logout");
+  if (need) $("rtLoginTime").textContent = t.login.time;
+  const past = $("remindPast");
+  past.classList.toggle("hidden", !S.missed.length);
+  if (S.missed.length) past.innerHTML = "<b>⚠️ Logout missed</b>You did not post your Logout on " +
+    S.missed.map(msgDate).join(", ") + ". Please inform your SM.";
+
+  updatePreview();
+  renderHistory();
+}
+
+function getLoc(){ return $("fLoc").value === "Other…" ? v("fLocOther") : $("fLoc").value; }
+function loginTimeText(){
+  const h = $("lHour").value, m = $("lMin").value;
+  if (!h || !m) return "";
+  return h + ":" + m + " " + $("lAp").value;
+}
+function buildMessage(){
+  const t = S.today, saved = t[mode];
+  if (saved && saved.message) return saved.message;
+  const date = msgDate(t.date);
+  if (mode === "login") return [
+    "Date : " + date,
+    "Caller name : " + S.user.name,
+    "Cp firm : " + v("fCp"),
+    "SM :  " + $("fSm").value,
+    "Location:  " + getLoc(),
+    "Login time :" + loginTimeText(),
+  ].join("\n");
+  return [
+    "Date: " + date,
+    "Caller Name :- " + S.user.name,
+    "SM Name - " + (t.login ? t.login.sm : ""),
+    "Total Calls:- " + v("oTotal"),
+    "Connect Calls: " + v("oConnect"),
+    "Log out time:- " + $("fTime").value,
+    "Lead of the day:- " + v("oLead"),
+    "Site visit done today- " + v("oVisitToday"),
+    "Tomorrow site visit: " + v("oVisitTom"),
+    "Site visit confirmed WTD: " + v("oWtd"),
+  ].join("\n");
+}
+function updatePreview(){
+  $("fLocOther").classList.toggle("hidden", $("fLoc").value !== "Other…");
+  $("preview").innerHTML = '<span class="h">' + esc(S.user.name) + '</span>\n' + esc(buildMessage());
+}
+["fCp","fSm","fLoc","fLocOther","lHour","lMin","lAp",...LOGOUT_IDS].forEach(id => {
+  $(id).addEventListener("input", updatePreview); $(id).addEventListener("change", updatePreview);
+});
+
+function validate(){
+  if (mode === "login"){
+    if (!loginTimeText()) return "Please choose the login time (hour and minute).";
+    const mins = (Number($("lHour").value) % 12 + ($("lAp").value === "PM" ? 12 : 0)) * 60 + Number($("lMin").value);
+    if (mins > nowMinutes()) return "Login time cannot be in the future.";
+    if (!$("fSm").value) return "Please choose the SM.";
+    if (!v("fCp")) return "Please enter the CP firm.";
+    if (!getLoc()) return "Please enter the location.";
+    return "";
+  }
+  const names = { oTotal:"Total calls", oConnect:"Connect calls", oLead:"Lead of the day",
+    oVisitToday:"Site visit done today", oVisitTom:"Tomorrow site visit", oWtd:"Site visit confirmed WTD" };
+  const empty = LOGOUT_IDS.filter(id => !v(id)).map(id => names[id]);
+  if (empty.length) return "Please fill: " + empty.join(", ") + " (put 0 if none).";
+  if (Number(v("oConnect")) > Number(v("oTotal"))) return "Connect calls cannot be more than Total calls.";
+  return "";
+}
+
+/* submit -> confirm -> server -> WhatsApp */
+let pending = null;
+$("attForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const err = validate(); $("formErr").textContent = err; if (err) return;
+  $("fTime").value = fmt12(nowMinutes());
+  pending = mode === "login"
+    ? { type:"login", data:{ hour:$("lHour").value, min:$("lMin").value, ap:$("lAp").value, sm:$("fSm").value, cp:v("fCp"), loc:getLoc() } }
+    : { type:"logout", data:{ total:v("oTotal"), connect:v("oConnect"), lead:v("oLead"), visitToday:v("oVisitToday"), visitTom:v("oVisitTom"), wtd:v("oWtd") } };
+  $("cTitle").textContent = "Confirm your " + (mode === "login" ? "Login" : "Logout");
+  $("cMsg").textContent = buildMessage() + (mode === "logout" ? "\n\n(Logout time is taken at the moment you press Post.)" : "");
+  $("cStep1").classList.remove("hidden"); $("cStep2").classList.add("hidden");
+  $("confirm").classList.remove("hidden");
+});
+$("cEdit").onclick = () => { pending = null; $("confirm").classList.add("hidden"); };
+$("c2Close").onclick = () => $("confirm").classList.add("hidden");
+$("cOk").onclick = async () => {
+  if (!pending) return;
+  const p = pending; pending = null;
+  $("cOk").disabled = true; busy(true);
+  try{
+    const res = await call("post", p);
+    if (p.type === "login") store.set("att_last_" + S.user.username, JSON.stringify({ sm:p.data.sm, loc:$("fLoc").value, cp:p.data.cp }));
+    else LOGOUT_IDS.forEach(id => $(id).value = "");
+    $("lHour").value = ""; $("lMin").value = ""; $("lAp").value = "AM";
+    S = res.state;
+    $("c2Title").textContent = (p.type === "login" ? "Login" : "Logout") + " saved";
+    $("c2Msg").textContent = res.message;
+    $("c2Wa").href = "https://api.whatsapp.com/send?text=" + encodeURIComponent(res.message);
+    $("cStep1").classList.add("hidden"); $("cStep2").classList.remove("hidden");
+    refresh();
+  }catch(err){
+    $("confirm").classList.add("hidden");
+    if (err.message !== "SESSION_EXPIRED"){ popup("Not posted", err.message); refreshFromServer(); }
+  }
+  $("cOk").disabled = false; busy(false);
+};
+$("c2Copy").onclick = async () => {
+  try{ await navigator.clipboard.writeText($("c2Msg").textContent); toast("Message copied"); }
+  catch(e){ toast("Copy blocked – long-press the message to copy"); }
+};
+async function refreshFromServer(){ try{ S = await call("me"); refresh(); }catch(e){} }
+
+function renderHistory(){
+  const list = $("histList");
+  if (!S.history.length){ list.innerHTML = "<li>No entries yet.</li>"; return; }
+  list.innerHTML = S.history.map(h => {
+    const out = h.logout ? esc(h.logout) : (h.date < S.today.date ? '<span class="miss">missed</span>' : "pending");
+    return "<li>" + msgDate(h.date) + " · Login " + (esc(h.login) || "—") + " · Logout " + out + "</li>";
+  }).join("");
+}
+setInterval(() => { if (S && !$("callerView").classList.contains("hidden")) refresh(); }, 30000);
+
+/* =====================================================
+   ADMIN
+   ===================================================== */
+let A = null;          // admin data
+let R = null;          // report
+
+function startAdmin(st){
+  $("adminName").textContent = st.user.name;
+  loadAdmin().then(() => { $("rDate").value = A.today; loadReport(); });
+}
+async function loadAdmin(){
+  busy(true);
+  try{ A = await call("adminData"); renderAdmin(); }catch(e){ if (e.message !== "SESSION_EXPIRED") popup("Error", e.message); }
+  busy(false);
+}
+document.querySelectorAll("[data-atab]").forEach(b => b.onclick = () => {
+  document.querySelectorAll("[data-atab]").forEach(x => x.classList.toggle("on", x === b));
+  ["report","reports","callers","lists","transfers"].forEach(n => $("a_" + n).classList.toggle("hidden", n !== b.dataset.atab));
+  if (b.dataset.atab === "report") loadReport();
+  if (b.dataset.atab === "reports" && !PR) setRange("month");
+});
+
+function renderAdmin(){
+  fill($("rBranch"), A.branches, $("rBranch").value, "All branches");
+  fill($("cBranch"), A.branches, $("cBranch").value, "All branches");
+  fill($("pBranch"), A.branches, $("pBranch").value, "All branches");
+  renderCallers();
+  $("lBranches").value = A.branches.join("\n");
+  $("lSms").value = A.sms.join("\n");
+  $("lLocs").value = A.locations.join("\n");
+  $("lRemind").value = A.reminderAt;
+  $("lLate").value = A.lateAfter;
+  $("lOff").value = A.weeklyOff;
+  $("tBody").innerHTML = A.transfers.length ? A.transfers.map(t =>
+    "<tr><td>"+esc(t.changedOn)+"</td><td>"+esc(t.name)+"</td><td>"+esc(t.from||"—")+"</td><td>"+esc(t.to)+"</td><td>"+esc(niceDate(t.effective))+"</td><td>"+esc(t.by)+"</td></tr>"
+  ).join("") : '<tr><td colspan="6" style="color:var(--muted)">No branch changes yet.</td></tr>';
+}
+
+/* ---- attendance report ---- */
+$("rDate").onchange = loadReport;
+$("rBranch").onchange = renderReport;
+async function loadReport(){
+  if (!A) return;
+  busy(true);
+  try{ R = await call("report", { date: $("rDate").value || A.today }); renderReport(); }
+  catch(e){ if (e.message !== "SESSION_EXPIRED") popup("Error", e.message); }
+  busy(false);
+}
+function statusOf(r){
+  if (!r.login) return R.isOff ? ["Weekly off",""] : R.isToday ? ["Not logged in","warn"] : ["Absent","bad"];
+  if (!r.logout){
+    const [h,m] = R.reminderAt.split(":").map(Number);
+    if (!R.isToday) return ["Logout missed","bad"];
+    return R.serverMinutes >= h*60+m ? ["Logout pending","bad"] : ["Working","done"];
+  }
+  return ["Done","done"];
+}
+function reportRows(){ const b = $("rBranch").value; return R.rows.filter(r => !b || r.branch === b); }
+function renderReport(){
+  if (!R) return;
+  const rows = reportRows();
+  const cnt = k => rows.filter(r => statusOf(r)[0] === k).length;
+  const logged = rows.filter(r => r.login).length;
+  $("rSummary").innerHTML = [
+    ["Callers", rows.length], ["Logged in", logged], ["Logged out", rows.filter(r => r.logout).length],
+    [R.isOff ? "Weekly off" : "Not logged in", rows.length - logged], ["Logout pending", cnt("Logout pending") + cnt("Logout missed")]
+  ].map(s => '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>').join("");
+  $("rBody").innerHTML = rows.length ? rows.map(r => {
+    const s = statusOf(r);
+    return "<tr><td>"+esc(r.name)+"</td><td>"+esc(r.branch)+"</td><td>"+esc(r.sm||"—")+"</td><td>"+esc(r.login||"—")+
+      "</td><td>"+esc(r.logout||"—")+"</td><td>"+(r.total ? esc(r.total)+" ("+esc(r.connect)+")" : "—")+
+      '</td><td><span class="pill '+s[1]+'">'+s[0]+"</span></td></tr>";
+  }).join("") : '<tr><td colspan="7" style="color:var(--muted)">No active callers. Add them in the Callers tab.</td></tr>';
+}
+$("rRemind").onclick = () => {
+  if (!R) return;
+  const pend = reportRows().filter(r => r.login && !r.logout);
+  if (!pend.length){ popup("Nobody pending", "Everyone who logged in has posted the logout.", "✅"); return; }
+  const msg = "⏰ Kindly post the logout\n\n" + pend.map((r,i) => (i+1) + ". " + r.name).join("\n") +
+    "\n\nDate: " + msgDate(R.date);
+  const a = document.createElement("a");
+  a.href = "https://api.whatsapp.com/send?text=" + encodeURIComponent(msg);
+  a.target = "_blank"; a.rel = "noopener";
+  document.body.appendChild(a); a.click(); a.remove();
+};
+
+/* ---- period reports ---- */
+let PR = null;
+function keyOf(d){ return d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate()); }
+function setRange(r){
+  const t = A.today, [y, m] = t.split("-").map(Number);
+  let from = t, to = t;
+  if (r === "7"){ const d = new Date(y, m-1, Number(t.slice(8))); d.setDate(d.getDate()-6); from = keyOf(d); }
+  if (r === "month") from = t.slice(0, 8) + "01";
+  if (r === "lastmonth"){ from = keyOf(new Date(y, m-2, 1)); to = keyOf(new Date(y, m-1, 0)); }
+  $("pFrom").value = from; $("pTo").value = to;
+  loadPeriod();
+}
+document.querySelectorAll("[data-range]").forEach(b => b.onclick = () => setRange(b.dataset.range));
+$("pLoad").onclick = loadPeriod;
+$("pBranch").onchange = renderPeriod;
+$("pSort").onchange = renderPeriod;
+$("pSearch").oninput = renderPeriod;
+async function loadPeriod(){
+  busy(true);
+  try{ PR = await call("periodReport", { from: $("pFrom").value, to: $("pTo").value }); renderPeriod(); }
+  catch(e){ if (e.message !== "SESSION_EXPIRED") popup("Report", e.message); }
+  busy(false);
+}
+const pct = x => x == null ? "—" : x + "%";
+const bar = x => x == null ? "" : '<span class="bar"><i class="'+(x < 75 ? "low" : "")+'" style="width:'+x+'%"></i></span>';
+const n0 = x => x ? Number(x).toLocaleString("en-IN") : "0";
+function renderPeriod(){
+  if (!PR) return;
+  $("pOut").classList.remove("hidden");
+  const b = $("pBranch").value;
+  const emps = PR.employees.filter(e => !b || e.branch === b);
+  const brs = PR.branches.filter(x => !b || x.branch === b);
+  const sum = k => emps.reduce((t, e) => t + e[k], 0);
+  const pr = sum("present"), ab = sum("absent"), tot = sum("total"), con = sum("connect");
+  $("pSummary").innerHTML = [
+    ["Callers", emps.filter(e => e.active === "yes").length],
+    ["Attendance", pr + ab ? Math.round(pr*100/(pr+ab)) + "%" : "—"],
+    ["Absent days", ab], ["Late logins", sum("late")], ["Logout missed", sum("missed")],
+    ["Total calls", n0(tot)], ["Connect", n0(con) + (tot ? " (" + Math.round(con*100/tot) + "%)" : "")],
+    ["Leads", n0(sum("lead"))], ["Site visits", n0(sum("visits"))]
+  ].map(s => '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>').join("");
+  $("pRules").textContent = niceDate(PR.from) + " to " + niceDate(PR.to) + " · Late = login after " + PR.lateAfter +
+    " · Weekly off: " + (PR.weeklyOff === "None" ? "none" : PR.weeklyOff) + " (not counted as absent) · Days before a caller's joining date are not counted.";
+
+  $("pBranches").innerHTML = brs.map(x => "<tr><td>"+esc(x.branch)+'</td><td class="num">'+x.callers+'</td><td class="num">'+x.present+
+    '</td><td class="num">'+x.absent+'</td><td class="num">'+pct(x.attPct)+bar(x.attPct)+'</td><td class="num">'+x.late+'</td><td class="num">'+x.missed+
+    '</td><td class="num">'+n0(x.total)+'</td><td class="num">'+n0(x.connect)+(x.connectPct!=null?" ("+x.connectPct+"%)":"")+
+    '</td><td class="num">'+n0(x.lead)+'</td><td class="num">'+n0(x.visits)+"</td></tr>").join("") ||
+    '<tr><td colspan="11" style="color:var(--muted)">No branches.</td></tr>';
+
+  const top = (k, label, fmt) => {
+    const list = emps.filter(e => e[k] != null && e[k] > 0).sort((a, c) => c[k] - a[k]).slice(0, 3);
+    return '<div class="top3"><h3>'+label+'</h3>' + (list.length ? "<ol>" + list.map(e =>
+      "<li>"+esc(e.name)+" <span>"+fmt(e)+"</span></li>").join("") + "</ol>" : '<span class="hint">No data yet</span>') + "</div>";
+  };
+  $("pTops").innerHTML = top("connect", "Most connect calls", e => n0(e.connect)) + top("visits", "Most site visits", e => n0(e.visits)) +
+    top("lead", "Most leads", e => n0(e.lead)) + top("attPct", "Best attendance", e => e.attPct + "% (" + e.present + " days)");
+
+  const q = v("pSearch").toLowerCase(), k = $("pSort").value;
+  const list = emps.filter(e => !q || e.name.toLowerCase().includes(q)).sort((a, c) =>
+    k === "name" ? a.name.localeCompare(c.name) :
+    k === "attPct" ? (a.attPct == null ? 999 : a.attPct) - (c.attPct == null ? 999 : c.attPct) : c[k] - a[k]);
+  $("pEmps").innerHTML = list.map(e => '<tr class="click" data-emp="'+esc(e.username)+'"><td>'+esc(e.name)+(e.active!=="yes"?' <span class="pill bad">Inactive</span>':"")+
+    "</td><td>"+esc(e.branch)+'</td><td class="num">'+e.present+'</td><td class="num">'+e.absent+'</td><td class="num">'+pct(e.attPct)+bar(e.attPct)+
+    '</td><td class="num">'+e.late+'</td><td class="num">'+e.missed+"</td><td>"+(e.avgLogin||"—")+
+    '</td><td class="num">'+n0(e.total)+'</td><td class="num">'+n0(e.connect)+(e.connectPct!=null?" ("+e.connectPct+"%)":"")+
+    '</td><td class="num">'+n0(e.lead)+'</td><td class="num">'+n0(e.visits)+"</td></tr>").join("") ||
+    '<tr><td colspan="12" style="color:var(--muted)">No callers for this filter.</td></tr>';
+  document.querySelectorAll("[data-emp]").forEach(r => r.onclick = () => openEmp(r.dataset.emp));
+}
+const statusCls = { "Present":"done", "Late":"warn", "Logout missed":"bad", "Absent":"bad", "Weekly off":"", "Working":"done", "Not logged in":"warn" };
+function openEmp(username){
+  const e = PR.employees.find(x => x.username === username); if (!e) return;
+  $("eName").textContent = e.name;
+  $("eInfo").textContent = [e.branch, e.phone, e.joining ? "Joined " + niceDate(e.joining) : "", "Login ID: " + e.username].filter(Boolean).join(" · ");
+  $("eStats").innerHTML = [["Present", e.present], ["Absent", e.absent], ["Attendance", pct(e.attPct)], ["Late", e.late],
+    ["Logout missed", e.missed], ["Avg login", e.avgLogin || "—"],
+    ["Calls", n0(e.total)], ["Connect", n0(e.connect) + (e.connectPct!=null ? " ("+e.connectPct+"%)" : "")], ["Leads", n0(e.lead)], ["Site visits", n0(e.visits)]]
+    .map(s => '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>').join("");
+  $("eDays").innerHTML = e.daily.map(d => "<tr><td>"+niceDate(d.date)+"</td><td>"+d.day+'</td><td><span class="pill '+(statusCls[d.status]||"")+'">'+d.status+
+    "</span></td><td>"+(esc(d.login)||"—")+"</td><td>"+(esc(d.logout)||"—")+"</td><td>"+(d.hours||"—")+"</td><td>"+(esc(d.sm)||"—")+
+    '</td><td class="num">'+(esc(d.total)||"—")+'</td><td class="num">'+(esc(d.connect)||"—")+'</td><td class="num">'+(esc(d.lead)||"—")+
+    '</td><td class="num">'+(esc(d.visits)||"—")+"</td></tr>").join("") || '<tr><td colspan="11" style="color:var(--muted)">No days in this period.</td></tr>';
+  $("empModal").classList.remove("hidden");
+}
+// copy any table as tab-separated text (pastes neatly into Excel / Google Sheets)
+document.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
+  const t = $(b.dataset.copy);
+  const text = [...t.querySelectorAll("tr")].map(r => [...r.children].map(c => c.innerText.trim()).join("\t")).join("\n");
+  try{ await navigator.clipboard.writeText(text); toast("Table copied – paste into Excel or Google Sheets"); }
+  catch(e){ toast("Copy blocked by the browser"); }
+});
+
+/* ---- callers ---- */
+$("cSearch").oninput = renderCallers;
+$("cBranch").onchange = renderCallers;
+function renderCallers(){
+  const q = v("cSearch").toLowerCase(), b = $("cBranch").value;
+  const list = A.users.filter(u => (!b || u.branch === b) &&
+    (!q || u.name.toLowerCase().includes(q) || u.username.includes(q) || (u.phone||"").includes(q)));
+  $("cBody").innerHTML = list.length ? list.map(u =>
+    "<tr><td>"+esc(u.name)+"</td><td>"+esc(u.phone||"—")+"</td><td>"+esc(u.username)+"</td><td>"+esc(u.branch||"—")+"</td><td>"+esc(niceDate(u.joining)||"—")+
+    "</td><td>"+(u.role==="admin"?"Admin":"Caller")+'</td><td><span class="pill '+(u.active==="yes"?"done":"bad")+'">'+
+    (u.active==="yes"?"Active":"Inactive")+'</span></td><td><div class="acts">'+
+    '<button class="small ghost" data-edit="'+esc(u.username)+'">Edit</button>'+
+    (u.role==="caller" ? '<button class="small" data-move="'+esc(u.username)+'">Change branch</button>' : "")+
+    "</div></td></tr>"
+  ).join("") : '<tr><td colspan="8" style="color:var(--muted)">No callers found.</td></tr>';
+  document.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openUser(b.dataset.edit));
+  document.querySelectorAll("[data-move]").forEach(b => b.onclick = () => openTransfer(b.dataset.move));
+}
+
+let editing = null;
+$("cAdd").onclick = () => openUser(null);
+function openUser(username){
+  editing = username ? A.users.find(u => u.username === username) : null;
+  $("uTitle").textContent = editing ? "Edit " + editing.name : "Add caller";
+  const nm = editing ? editing.name.trim().split(/\s+/) : [];
+  $("uFirst").value = nm[0] || "";
+  $("uLast").value = nm.slice(1).join(" ");
+  $("uPhone").value = editing ? String(editing.phone || "").replace(/\D/g, "").slice(-10) : "";
+  $("uUser").value = editing ? editing.username : "";
+  $("uIdBox").classList.toggle("hidden", !editing);
+  $("uAutoNote").classList.toggle("hidden", !!editing);
+  fill($("uBranch"), A.branches, "", "Select branch");
+  $("uBranchBox").classList.toggle("hidden", !!editing);
+  $("uBranchNow").classList.toggle("hidden", !editing);
+  if (editing) $("uBranchNow").textContent = "Branch: " + (editing.branch || "—") + " (use “Change branch” to move)";
+  $("uJoin").value = editing ? editing.joining : "";
+  $("uJoin").max = A.today;
+  $("uRole").value = editing ? editing.role : "caller";
+  $("uActive").value = editing ? editing.active : "yes";
+  $("uErr").textContent = "";
+  $("userModal").classList.remove("hidden");
+}
+$("userForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const user = { isNew: !editing, firstName: v("uFirst"), lastName: v("uLast"), phone: v("uPhone"), username: editing ? editing.username : "",
+    branch: $("uBranch").value, joining: $("uJoin").value, role: $("uRole").value, active: $("uActive").value };
+  busy(true);
+  try{ A = await call("saveUser", { user }); renderAdmin(); $("userModal").classList.add("hidden");
+       if (A.credentials) showCredentials(A.credentials); else toast("Saved"); }
+  catch(err){ $("uErr").textContent = err.message; }
+  busy(false);
+});
+
+let moving = null;
+function openTransfer(username){
+  moving = A.users.find(u => u.username === username);
+  $("trWho").textContent = moving.name + " is now in: " + (moving.branch || "—");
+  fill($("trBranch"), A.branches.filter(b => b !== moving.branch), "", "Select new branch");
+  $("trDate").value = A.today;
+  $("trErr").textContent = "";
+  $("trModal").classList.remove("hidden");
+}
+$("trSave").onclick = async () => {
+  busy(true);
+  try{ A = await call("transfer", { username: moving.username, branch: $("trBranch").value, effective: $("trDate").value });
+       renderAdmin(); $("trModal").classList.add("hidden"); toast(moving.name + " moved to " + $("trBranch").value); }
+  catch(err){ $("trErr").textContent = err.message; }
+  busy(false);
+};
+
+$("uPhone").addEventListener("input", () => { $("uPhone").value = $("uPhone").value.replace(/\D/g, "").slice(0, 10); });
+
+$("uReset").onclick = async () => {
+  if (!editing) return;
+  busy(true);
+  try{ A = await call("resetPassword", { username: editing.username }); renderAdmin();
+       $("userModal").classList.add("hidden"); showCredentials(A.credentials); }
+  catch(err){ $("uErr").textContent = err.message; }
+  busy(false);
+};
+function credText(c){
+  return "Hello " + c.name + ",\n\nYour login details for Team Attendance:\n" +
+    "Login ID: " + c.username + "\nPassword: " + c.password +
+    (A && A.appUrl ? "\nWebsite: " + A.appUrl : "") + "\n\nPlease do not share your password with anyone.";
+}
+function showCredentials(c){
+  $("crTitle").textContent = c.isNew ? "Caller added" : "New password created";
+  $("crName").textContent = c.name;
+  $("crBox").textContent = "Login ID:  " + c.username + "\nPassword:  " + c.password;
+  const digits = String(c.phone || "").replace(/\D/g, "").slice(-10);
+  $("crWa").href = "https://api.whatsapp.com/send?" + (digits ? "phone=91" + digits + "&" : "") + "text=" + encodeURIComponent(credText(c));
+  $("crWa").classList.toggle("hidden", !digits);
+  $("crCopy").dataset.text = credText(c);
+  $("credModal").classList.remove("hidden");
+}
+$("crCopy").onclick = async () => {
+  try{ await navigator.clipboard.writeText($("crCopy").dataset.text); toast("Login details copied"); }
+  catch(e){ toast("Copy blocked – long-press the details to copy"); }
+};
+$("crDone").onclick = () => $("credModal").classList.add("hidden");
+
+/* ---- lists ---- */
+$("lSave").onclick = async () => {
+  const lines = id => $(id).value.split("\n").map(s => s.trim()).filter(Boolean);
+  $("lErr").textContent = "";
+  busy(true);
+  try{ A = await call("saveLists", { branches: lines("lBranches"), sms: lines("lSms"), locations: lines("lLocs"), reminderAt: v("lRemind"), lateAfter: v("lLate"), weeklyOff: $("lOff").value });
+       renderAdmin(); toast("Settings saved"); }
+  catch(err){ $("lErr").textContent = err.message; }
+  busy(false);
+};
+
+/* ================= calendar date picker =================
+   Our own calendar (the browser's built-in one is blocked inside the page frame).
+   The original <input type=date> keeps its id and value (yyyy-mm-dd) so the rest of the code works. */
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const cal = document.createElement("div");
+cal.className = "cal hidden";
+document.body.appendChild(cal);
+let calFor = null, calView = null;
+
+function makeDatePicker(inp){
+  const disp = document.createElement("input");
+  disp.type = "text"; disp.readOnly = true; disp.className = "datefield"; disp.placeholder = "Select date";
+  disp.id = inp.id + "_show";
+  const lab = document.querySelector('label[for="' + inp.id + '"]'); if (lab) lab.htmlFor = disp.id;
+  inp.type = "hidden"; inp.after(disp);
+  let val = "";
+  Object.defineProperty(inp, "value", { configurable: true,
+    get: () => val,
+    set: x => { val = x || ""; disp.value = val ? niceDate(val) : ""; } });
+  inp._disp = disp;
+  disp.addEventListener("click", e => { e.stopPropagation(); openCal(inp); });
+}
+function openCal(inp){
+  calFor = inp;
+  const base = inp.value ? inp.value.split("-").map(Number) : null;
+  const t = new Date();
+  calView = base ? { y: base[0], m: base[1] - 1 } : { y: t.getFullYear(), m: t.getMonth() };
+  drawCal();
+  cal.classList.remove("hidden");
+  const r = inp._disp.getBoundingClientRect(), w = Math.min(310, window.innerWidth - 16);
+  cal.style.width = w + "px";
+  cal.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + "px";
+  const below = r.bottom + 6, h = cal.offsetHeight;
+  cal.style.top = (below + h < window.innerHeight ? below : Math.max(8, r.top - h - 6)) + "px";
+}
+function closeCal(){ cal.classList.add("hidden"); calFor = null; }
+function iso(y, m, d){ return y + "-" + pad(m + 1) + "-" + pad(d); }
+function drawCal(){
+  const { y, m } = calView, max = calFor.getAttribute("max") || "";
+  const first = (new Date(y, m, 1).getDay() + 6) % 7;            // Monday first
+  const days = new Date(y, m + 1, 0).getDate();
+  const t = new Date(), todayIso = iso(t.getFullYear(), t.getMonth(), t.getDate());
+  const years = []; for (let i = t.getFullYear() + 1; i >= t.getFullYear() - 30; i--) years.push(i);
+  let html = '<div class="cal-head"><button type="button" data-nav="-1">‹</button>' +
+    '<select data-cm>' + MONTHS.map((n, i) => '<option value="'+i+'"'+(i===m?" selected":"")+'>'+n+'</option>').join("") + '</select>' +
+    '<select data-cy>' + years.map(n => '<option'+(n===y?" selected":"")+'>'+n+'</option>').join("") + '</select>' +
+    '<button type="button" data-nav="1">›</button></div><div class="cal-grid">' +
+    ["Mo","Tu","We","Th","Fr","Sa","Su"].map(d => '<span class="cal-dow">'+d+'</span>').join("");
+  for (let i = 0; i < first; i++) html += "<span></span>";
+  for (let d = 1; d <= days; d++){
+    const k = iso(y, m, d), off = max && k > max;
+    html += '<button type="button" class="cal-day' + (k === calFor.value ? " sel" : "") + (k === todayIso ? " today" : "") +
+      '" data-day="' + k + '"' + (off ? " disabled" : "") + '>' + d + '</button>';
+  }
+  html += '</div><div class="cal-foot"><button type="button" data-today>Today</button><button type="button" data-close>Close</button></div>';
+  cal.innerHTML = html;
+}
+function pickDate(k){
+  const inp = calFor; inp.value = k; closeCal();
+  inp.dispatchEvent(new Event("change"));
+}
+cal.addEventListener("click", e => {
+  e.stopPropagation();
+  const b = e.target.closest("button"); if (!b || b.disabled) return;
+  if (b.dataset.nav){ calView.m += Number(b.dataset.nav);
+    if (calView.m < 0){ calView.m = 11; calView.y--; } if (calView.m > 11){ calView.m = 0; calView.y++; } drawCal(); }
+  else if (b.dataset.day) pickDate(b.dataset.day);
+  else if ("today" in b.dataset){ const t = new Date(), k = iso(t.getFullYear(), t.getMonth(), t.getDate());
+    const max = calFor.getAttribute("max"); if (!max || k <= max) pickDate(k); }
+  else if ("close" in b.dataset) closeCal();
+});
+cal.addEventListener("change", e => {
+  if (e.target.matches("[data-cm]")) calView.m = Number(e.target.value);
+  if (e.target.matches("[data-cy]")) calView.y = Number(e.target.value);
+  drawCal();
+});
+document.addEventListener("click", () => { if (calFor) closeCal(); });
+window.addEventListener("resize", closeCal);
+document.querySelectorAll("input[type=date]").forEach(makeDatePicker);
+
+/* ================= start ================= */
+(async function(){
+  if (!token) return;
+  busy(true);
+  try{ show(await call("me")); }catch(e){ signOut(); }
+  busy(false);
+})();
+</script>
+</body>
+</html>

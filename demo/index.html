@@ -1,0 +1,1966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>// Minimal Apps Script mocks for local testing
+(function(){
+  let LS; try { LS = window.localStorage; LS.getItem('x'); } catch(e) { const m={}; LS={getItem:k=>k in m?m[k]:null,setItem:(k,v)=>m[k]=String(v),removeItem:k=>delete m[k]}; }
+  // new test-data version -> clear old saved test data automatically
+  if (LS.getItem('__mock_ver') !== '5') { ['__mock_db','__mock_props','att_token'].forEach(k => LS.removeItem(k)); LS.setItem('__mock_ver','5'); }
+  const DB = JSON.parse(LS.getItem('__mock_db') || '{}');      // {sheetName: [[...]]}
+  const PROPS = JSON.parse(LS.getItem('__mock_props') || '{}');
+  const save = () => { LS.setItem('__mock_db', JSON.stringify(DB)); LS.setItem('__mock_props', JSON.stringify(PROPS)); };
+  const strip = v => { v = String(v == null ? '' : v); return v[0] === "'" ? v.slice(1) : v; };
+  function Sheet(name){ this.name = name; }
+  Sheet.prototype = {
+    d(){ return DB[this.name]; },
+    getLastRow(){ return this.d().length; },
+    getDataRange(){ const d = this.d(); const w = Math.max(1, ...d.map(r => r.length)); const g = () => d.length ? d.map(r => { const x = r.slice(); while (x.length < w) x.push(''); return x.map(v => v == null ? '' : v); }) : [['']]; return { getDisplayValues: g, getValues: g }; },
+    getLastColumn(){ return Math.max(0, ...this.d().map(r => r.length)); },
+    clear(){ DB[this.name] = []; save(); },
+    appendRow(a){ this.d().push(a.map(strip)); save(); },
+    getRange(r, c, nr, nc){ const self = this; return {
+      setValues(vals){ vals.forEach((row, i) => row.forEach((x, j) => { if (x instanceof Date) x = x.toISOString().slice(0,10); const R = r - 1 + i; while (self.d().length <= R) self.d().push([]); self.d()[R][c - 1 + j] = strip(x); })); save(); return this; },
+      setFontWeight(){ return this; },
+      setValue(x){ return this.setValues([[x]]); },
+      setFormula(x){ return this.setValues([[x]]); },
+      setFormulas(v){ return this.setValues(v); } }; },
+    deleteRows(r, n){ this.d().splice(r - 1, n); save(); },
+    setFrozenRows(){},
+  };
+  const ss = {
+    getSpreadsheetTimeZone(){ return 'Asia/Kolkata'; },
+    getSheetByName(n){ return DB[n] ? new Sheet(n) : null; },
+    insertSheet(n){ DB[n] = []; save(); return new Sheet(n); },
+  };
+  window.SpreadsheetApp = { getActiveSpreadsheet: () => ss };
+  window.PropertiesService = { getScriptProperties: () => ({
+    getProperty: k => PROPS[k] == null ? null : PROPS[k], setProperty: (k, v) => { PROPS[k] = v; save(); },
+    deleteProperty: k => { delete PROPS[k]; save(); }, getProperties: () => Object.assign({}, PROPS) }) };
+  window.LockService = { getScriptLock: () => ({ waitLock(){}, releaseLock(){} }) };
+  window.HtmlService = {};
+  window.Logger = { log: (...a) => console.log('[Logger]', ...a) };
+  window.Utilities = {
+    DigestAlgorithm: { SHA_256: 1 },
+    computeDigest(_, s){ let h = 2166136261; const out = []; for (let k = 0; k < 32; k++){ for (const ch of s + k){ h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } out.push((h & 255) - 128); } return out; },
+    getUuid(){ return 'u' + Math.random().toString(36).slice(2) + Date.now(); },
+    formatDate(date, tz, fmt){
+      const p = {}; new Intl.DateTimeFormat('en-GB', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23' })
+        .formatToParts(date).forEach(x => p[x.type] = x.value);
+      return fmt.replace('yyyy', p.year).replace('MM', p.month).replace('dd', p.day).replace('HH', p.hour).replace('mm', p.minute).replace('ss', p.second);
+    },
+  };
+  // google.script.run shim -> calls api() asynchronously
+  window.google = { script: { get run(){
+    let ok = () => {}, fail = () => {};
+    const runner = new Proxy({}, { get(_, prop){
+      if (prop === 'withSuccessHandler') return f => { ok = f; return runner; };
+      if (prop === 'withFailureHandler') return f => { fail = f; return runner; };
+      return (...args) => setTimeout(() => { try { ok(window[prop](...args)); } catch (e) { fail(e); } }, 30);
+    }});
+    return runner;
+  } } };
+})();
+</script><script>/**
+ * TEAM ATTENDANCE – Google Sheet backend
+ * --------------------------------------
+ * 1. Create a NEW blank Google Sheet > Extensions > Apps Script
+ * 2. Paste this file into Code.gs, add an HTML file named "Index" and paste Index.html
+ * 3. Choose the function "setup" at the top and press Run (only once – builds all sheets)
+ * 4. Deploy > New deployment > Web app > Execute as: Me, Who has access: Anyone
+ *
+ * First admin login:  Login ID "admin"  password "admin123"  (reset it in the admin panel!)
+ *
+ * SHEETS CREATED
+ *  Employees         – one row per employee (master list)
+ *  Attendance        – one row per employee per day (login + logout side by side)
+ *  Employee Summary  – auto-calculated monthly report per employee (pick the month in B1)
+ *  Branch Summary    – auto-calculated monthly report per branch (pick the month in B1)
+ *  Branch Transfers  – history of every branch change
+ *  Branches / SMs / Locations – dropdown lists used by the website
+ *  Settings          – reminder time, late time, weekly off
+ */
+
+const TZ = 'Asia/Kolkata';
+
+const COLS = {
+  'Employees': ['Employee ID', 'First Name', 'Last Name', 'Full Name', 'Phone', 'Branch', 'Joining Date',
+                'Role', 'Status', 'Created On', 'Password Hash'],
+  'Attendance': ['Date', 'Day', 'Employee ID', 'Employee Name', 'Branch', 'SM', 'CP Firm', 'Location',
+                 'Login Time', 'Late', 'Logout Time', 'Hours Worked', 'Total Calls', 'Connect Calls', 'Connect %',
+                 'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Site Visit Confirmed WTD', 'Status',
+                 'Login Posted At', 'Logout Posted At', 'Admin Note', 'Login Message', 'Logout Message'],
+  'Branch Transfers': ['Changed On', 'Employee ID', 'Employee Name', 'From Branch', 'To Branch', 'Effective Date', 'Changed By'],
+  'Branches': ['Branch'],
+  'SMs': ['SM Name'],
+  'Locations': ['Location'],
+  'Settings': ['Setting', 'Value', 'Description'],
+};
+const DATE_COLS = ['Date', 'Joining Date', 'Effective Date'];
+const NUM_COLS = ['Total Calls', 'Connect Calls', 'Connect %', 'Site Visit Done', 'Tomorrow Site Visit', 'Site Visit Confirmed WTD'];
+const SUMMARY_ROWS = 300;     // employee rows prepared in "Employee Summary"
+
+/* ================= Web page ================= */
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('Team Attendance')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/* ================= One-time setup ================= */
+function setup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  Object.keys(COLS).forEach(function (name) {
+    let s = ss.getSheetByName(name);
+    if (!s) s = ss.insertSheet(name);
+    s.getRange(1, 1, 1, COLS[name].length).setValues([COLS[name]]);
+    s.setFrozenRows(1);
+  });
+  if (users_().length === 0)
+    appendObj_('Employees', { 'Employee ID': 'admin', 'First Name': 'Admin', 'Last Name': '', 'Full Name': 'Admin',
+      'Role': 'Admin', 'Status': 'Active', 'Created On': now_('yyyy-MM-dd HH:mm'), 'Password Hash': hash_('admin', 'admin123') });
+  seed_('Branches', ['Elements Callers', 'Airoli Commercial Calling', 'Eden Garden Airoli Caller',
+                     'Upvan Callers', 'Nerul Commercial Callers', 'Juinagar Commercial Calling']);
+  seed_('SMs', ['sohail sir', 'Aman sir', 'anand sir', 'Saurabh Khandagale']);
+  seed_('Locations', ['on site', 'office', 'field visit']);
+  [['Logout reminder time', '19:00', 'After this time (24-hour) callers who have not posted the logout see "Kindly post the logout"'],
+   ['Late after', '10:00', 'Login after this time (24-hour) is marked Late'],
+   ['Weekly off', 'Monday', 'This day is not counted as absent (or None)']].forEach(function (r) {
+    if (!setting_(r[0], '')) append_('Settings', r);
+  });
+  buildSummaries_(ss);
+  try { format_(ss); } catch (e) { Logger.log('Formatting skipped: ' + e); }
+  try { installNightly_(); } catch (e) { Logger.log('Trigger skipped: ' + e); }
+  try {
+    const s1 = ss.getSheetByName('Sheet1');
+    if (s1 && s1.getLastRow() === 0) ss.deleteSheet(s1);
+  } catch (e) {}
+  return 'Setup done';
+}
+
+/* ================= Summary sheets (formulas – update automatically) ================= */
+function buildSummaries_(ss) {
+  const A = function (c) { return "Attendance!$" + colLetter_('Attendance', c) + ":$" + colLetter_('Attendance', c); };
+  const E = function (c) { return "Employees!" + colLetter_('Employees', c) + "2:" + colLetter_('Employees', c); };
+  const S = 'DATE(YEAR($B$1),MONTH($B$1),1)', END = 'EOMONTH($B$1,0)', PAST = 'MIN(EOMONTH($B$1,0),TODAY()-1)';
+  const first = new Date(); first.setDate(1);
+
+  /* ---- Employee Summary ---- */
+  let s = ss.getSheetByName('Employee Summary') || ss.insertSheet('Employee Summary');
+  s.clear();
+  s.getRange(1, 1, 3, 2).setValues([['Month →', first], ['Weekly off', ''], ['Weekend code', '']]);
+  s.getRange(2, 2).setFormula('=IFERROR(VLOOKUP("Weekly off",Settings!A:B,2,FALSE),"Monday")');
+  // 7-character weekend code for NETWORKDAYS.INTL (Mon..Sun, 1 = off day)
+  s.getRange(3, 2).setFormula('=IFERROR(REPT("0",MATCH(B2,{"Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"},0)-1)&"1"&REPT("0",7-MATCH(B2,{"Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"},0)),"0000000")');
+  s.getRange(1, 4).setValue('← change the month in B1 (any date of that month). Everything below updates automatically.');
+  const eh = ['Employee ID', 'Employee Name', 'Branch', 'Joining Date', 'Working Days', 'Present', 'Absent', 'Attendance %',
+              'Late Logins', 'Logout Missed', 'Total Calls', 'Connect Calls', 'Connect %', 'Leads', 'Site Visits'];
+  s.getRange(5, 1, 1, eh.length).setValues([eh]);
+  s.getRange(6, 1).setFormula('=IFERROR(SORT(FILTER({' + E('Employee ID') + ',' + E('Full Name') + ',' + E('Branch') + ',' + E('Joining Date') +
+    '},' + E('Role') + '="Caller",' + E('Status') + '="Active"),3,TRUE,2,TRUE),"")');
+  const id = A('Employee ID'), dt = A('Date');
+  const f = [];
+  for (let r = 6; r < 6 + SUMMARY_ROWS; r++) {
+    const ID = '$A' + r, J = 'IF($D' + r + '="",0,$D' + r + ')';
+    const inMonth = id + ',' + ID + ',' + dt + ',">="&' + S + ',' + dt + ',"<="&' + END;
+    const gone = id + ',' + ID + ',' + dt + ',">="&MAX(' + S + ',' + J + '),' + dt + ',"<="&' + PAST;
+    const W = (x) => '=IF(' + ID + '="","",' + x + ')';
+    f.push([
+      W('MAX(0,NETWORKDAYS.INTL(MAX(' + S + ',' + J + '),' + PAST + ',$B$3))'),
+      W('COUNTIFS(' + inMonth + ')'),
+      W('MAX(0,$E' + r + '-COUNTIFS(' + gone + ',' + A('Day') + ',"<>"&LEFT($B$2,3)))'),
+      '=IF(OR(' + ID + '="",$F' + r + '+$G' + r + '=0),"",$F' + r + '/($F' + r + '+$G' + r + '))',
+      W('COUNTIFS(' + inMonth + ',' + A('Late') + ',"Yes")'),
+      W('COUNTIFS(' + gone + ',' + A('Status') + ',"Logout pending")+COUNTIFS(' + gone + ',' + A('Status') + ',"Logout missed")'),
+      W('SUMIFS(' + A('Total Calls') + ',' + inMonth + ')'),
+      W('SUMIFS(' + A('Connect Calls') + ',' + inMonth + ')'),
+      '=IF(OR(' + ID + '="",N($K' + r + ')=0),"",$L' + r + '/$K' + r + ')',
+      W('SUMIFS(' + A('Lead of the Day') + ',' + inMonth + ')'),
+      W('SUMIFS(' + A('Site Visit Done') + ',' + inMonth + ')'),
+    ]);
+  }
+  s.getRange(6, 5, SUMMARY_ROWS, 11).setFormulas(f);
+  s.setFrozenRows(5);
+
+  /* ---- Branch Summary ---- */
+  s = ss.getSheetByName('Branch Summary') || ss.insertSheet('Branch Summary');
+  s.clear();
+  s.getRange(1, 1, 1, 2).setValues([['Month →', first]]);
+  s.getRange(1, 4).setValue('← change the month in B1. Present / calls are counted under the branch the caller was in on that day.');
+  const bh = ['Branch', 'Active Callers', 'Present Days', 'Late Logins', 'Logout Missed', 'Total Calls', 'Connect Calls',
+              'Connect %', 'Leads', 'Site Visits'];
+  s.getRange(3, 1, 1, bh.length).setValues([bh]);
+  s.getRange(4, 1).setFormula('=IFERROR(FILTER(Branches!A2:A,Branches!A2:A<>""),"")');
+  const br = A('Branch'), g = [];
+  for (let r = 4; r < 64; r++) {
+    const B = '$A' + r;
+    const inMonth = br + ',' + B + ',' + dt + ',">="&' + S + ',' + dt + ',"<="&' + END;
+    const past = br + ',' + B + ',' + dt + ',">="&' + S + ',' + dt + ',"<="&' + PAST;
+    const W = (x) => '=IF(' + B + '="","",' + x + ')';
+    g.push([
+      W('COUNTIFS(Employees!$' + colLetter_('Employees', 'Branch') + ':$' + colLetter_('Employees', 'Branch') + ',' + B +
+        ',Employees!$' + colLetter_('Employees', 'Role') + ':$' + colLetter_('Employees', 'Role') + ',"Caller",Employees!$' +
+        colLetter_('Employees', 'Status') + ':$' + colLetter_('Employees', 'Status') + ',"Active")'),
+      W('COUNTIFS(' + inMonth + ')'),
+      W('COUNTIFS(' + inMonth + ',' + A('Late') + ',"Yes")'),
+      W('COUNTIFS(' + past + ',' + A('Status') + ',"Logout pending")+COUNTIFS(' + past + ',' + A('Status') + ',"Logout missed")'),
+      W('SUMIFS(' + A('Total Calls') + ',' + inMonth + ')'),
+      W('SUMIFS(' + A('Connect Calls') + ',' + inMonth + ')'),
+      '=IF(OR(' + B + '="",N($F' + r + ')=0),"",$G' + r + '/$F' + r + ')',
+      W('SUMIFS(' + A('Lead of the Day') + ',' + inMonth + ')'),
+      W('SUMIFS(' + A('Site Visit Done') + ',' + inMonth + ')'),
+    ]);
+  }
+  s.getRange(4, 2, 60, 9).setFormulas(g);
+  s.setFrozenRows(3);
+}
+
+/* ================= Look & feel of the sheets ================= */
+function format_(ss) {
+  const GREEN = '#128c7e';
+  const order = ['Employees', 'Attendance', 'Employee Summary', 'Branch Summary', 'Branch Transfers', 'Branches', 'SMs', 'Locations', 'Settings'];
+  order.forEach(function (n, i) {
+    const s = ss.getSheetByName(n); if (!s) return;
+    ss.setActiveSheet(s); ss.moveActiveSheet(i + 1);
+    const lastCol = Math.max(s.getLastColumn(), 1);
+    const hr = n === 'Employee Summary' ? 5 : n === 'Branch Summary' ? 3 : 1;
+    s.getRange(hr, 1, 1, lastCol).setBackground(GREEN).setFontColor('#ffffff').setFontWeight('bold').setWrap(true).setVerticalAlignment('middle');
+    s.setRowHeight(hr, 34);
+    s.setTabColor(i < 2 ? GREEN : i < 4 ? '#f0b45a' : '#9aa5a0');
+  });
+  // Employees
+  let s = ss.getSheetByName('Employees');
+  s.getRange('G2:G').setNumberFormat('dd-mmm-yyyy');
+  s.getRange('F2:F').setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInRange(ss.getSheetByName('Branches').getRange('A2:A'), true).setAllowInvalid(true).build());
+  s.getRange('H2:H').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Caller', 'Admin'], true).build());
+  s.getRange('I2:I').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Active', 'Inactive'], true).build());
+  s.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Inactive').setBackground('#fdecea').setFontColor('#8a1f14').setRanges([s.getRange('I2:I')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Active').setBackground('#e7f6ef').setFontColor('#0b6b45').setRanges([s.getRange('I2:I')]).build(),
+  ]);
+  [130, 110, 110, 160, 130, 190, 110, 80, 80, 130, 120].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
+  s.hideColumns(11);                                          // Password Hash – never needed by admin
+  s.getRange('K1').setNote('Encrypted password. Do not edit. Use "Reset password" in the admin panel.');
+  // Attendance
+  s = ss.getSheetByName('Attendance');
+  s.getRange('A2:A').setNumberFormat('dd-mmm-yyyy');
+  s.getRange('O2:O').setNumberFormat('0%');
+  s.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Complete').setBackground('#e7f6ef').setFontColor('#0b6b45').setRanges([s.getRange('T2:T')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Logout pending').setBackground('#fff4e0').setFontColor('#7a4a00').setRanges([s.getRange('T2:T')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Logout missed').setBackground('#fdecea').setFontColor('#8a1f14').setRanges([s.getRange('T2:T')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Yes').setBackground('#fff4e0').setFontColor('#7a4a00').setRanges([s.getRange('J2:J')]).build(),
+  ]);
+  [100, 50, 130, 160, 190, 140, 90, 100, 85, 50, 85, 80, 70, 75, 70, 75, 75, 85, 90, 120, 160, 160, 200, 60, 60]
+    .forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
+  s.hideColumns(24, 2);                                       // full WhatsApp messages – kept for records
+  s.getRange('W1').setNote('Admin can write a note here, e.g. "Logout missed – phone battery dead".');
+  // Transfers
+  s = ss.getSheetByName('Branch Transfers');
+  s.getRange('F2:F').setNumberFormat('dd-mmm-yyyy');
+  [140, 150, 170, 190, 190, 110, 110].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
+  // Lists & settings
+  ['Branches', 'SMs', 'Locations'].forEach(function (n) { ss.getSheetByName(n).setColumnWidth(1, 240); });
+  s = ss.getSheetByName('Settings'); s.setColumnWidth(1, 170); s.setColumnWidth(2, 90); s.setColumnWidth(3, 520);
+  // Summaries
+  s = ss.getSheetByName('Employee Summary');
+  s.getRange('B1').setNumberFormat('mmmm yyyy').setBackground('#fff4e0').setFontWeight('bold')
+    .setDataValidation(SpreadsheetApp.newDataValidation().requireDate().build());
+  s.getRange('A1:A3').setFontWeight('bold'); s.getRange('A3:B3').setFontColor('#9aa5a0');
+  s.getRange('D6:D').setNumberFormat('dd-mmm-yyyy');
+  s.getRange('H6:H').setNumberFormat('0%'); s.getRange('M6:M').setNumberFormat('0%');
+  s.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0.75).setBackground('#fdecea').setFontColor('#8a1f14').setRanges([s.getRange('H6:H')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0).setFontColor('#c0392b').setRanges([s.getRange('J6:J')]).build(),
+  ]);
+  [130, 170, 190, 100, 75, 70, 70, 85, 65, 70, 75, 75, 75, 60, 65].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
+  s = ss.getSheetByName('Branch Summary');
+  s.getRange('B1').setNumberFormat('mmmm yyyy').setBackground('#fff4e0').setFontWeight('bold')
+    .setDataValidation(SpreadsheetApp.newDataValidation().requireDate().build());
+  s.getRange('A1').setFontWeight('bold');
+  s.getRange('H4:H').setNumberFormat('0%');
+  [220, 80, 80, 75, 75, 80, 80, 75, 60, 70].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
+  ss.setActiveSheet(ss.getSheetByName('Employees'));
+}
+
+/* ================= Nightly check (runs every night at 11 PM) ================= */
+function installNightly_() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'nightlyCheck') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('nightlyCheck').timeBased().atHour(23).everyDays(1).inTimezone(TZ).create();
+}
+// Marks every past day that still says "Logout pending" as "Logout missed"
+function nightlyCheck() {
+  const today = todayKey_(), t = table_('Attendance'), col = t.head.indexOf('Status') + 1;
+  if (!col) return;
+  t.rows.forEach(function (o) {
+    if (o['Status'] === 'Logout pending' && (o['Date'] < today || nowMinutes_() >= 23 * 60))
+      t.sheet.getRange(o._row, col, 1, 1).setValues([["'Logout missed"]]);
+  });
+}
+
+/* ================= Sheet helpers ================= */
+// Read a sheet as objects keyed by the header row (columns can be moved or added safely)
+function table_(name) {
+  const s = sheet_(name), range = s.getDataRange();
+  const disp = range.getDisplayValues(), raw = range.getValues();
+  const head = (disp[0] || []).map(function (h) { return String(h).trim(); });
+  const rows = [];
+  for (let i = 1; i < disp.length; i++) {
+    const o = { _row: i + 1 }; let any = false;
+    head.forEach(function (h, j) {
+      if (!h) return;
+      let v = disp[i][j];
+      const r = raw[i][j];
+      if (r instanceof Date) v = Utilities.formatDate(r, ssTz_(), 'yyyy-MM-dd');
+      else if (DATE_COLS.indexOf(h) >= 0) v = normDate_(v);
+      else if (typeof r === 'number' && NUM_COLS.indexOf(h) >= 0) v = String(r);
+      o[h] = String(v == null ? '' : v).trim();
+      if (o[h]) any = true;
+    });
+    if (any) rows.push(o);
+  }
+  return { sheet: s, head: head, rows: rows };
+}
+function ssTz_() { try { return SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || TZ; } catch (e) { return TZ; } }
+function normDate_(v) {            // accepts 2026-11-09, 09-11-2026, 09/11/2026
+  v = String(v || '').trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(v);
+  if (m) return m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+  m = /^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})$/.exec(v);
+  if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+  return v;
+}
+// value for a cell: dates as real dates, numbers as numbers, everything else as plain text
+function cell_(col, v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (DATE_COLS.indexOf(col) >= 0) return normDate_(v);
+  if ((NUM_COLS.indexOf(col) >= 0 || col === 'Lead of the Day') && /^\d+(\.\d+)?$/.test(String(v))) return Number(v);
+  if (col === 'Connect %' && typeof v === 'number') return v;
+  return "'" + String(v);
+}
+function headOf_(name) { return sheet_(name).getDataRange().getDisplayValues()[0].map(function (h) { return String(h).trim(); }); }
+function rowArr_(head, obj) { return head.map(function (h) { return h ? cell_(h, obj[h]) : ''; }); }
+function appendObj_(name, obj) { sheet_(name).appendRow(rowArr_(headOf_(name), obj)); }
+function updateObj_(name, rowNum, obj) {
+  const head = headOf_(name);
+  sheet_(name).getRange(rowNum, 1, 1, head.length).setValues([rowArr_(head, obj)]);
+}
+function colLetter_(name, col) {   // column letter of a header, e.g. ('Attendance','Status') -> 'T'
+  let n = COLS[name].indexOf(col) + 1, out = '';
+  while (n > 0) { const r = (n - 1) % 26; out = String.fromCharCode(65 + r) + out; n = Math.floor((n - 1) / 26); }
+  return out;
+}
+
+function sheet_(name) {
+  const s = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  if (!s) throw new Error('Sheet "' + name + '" missing – please run setup once.');
+  return s;
+}
+function rows_(name) { return sheet_(name).getDataRange().getDisplayValues().slice(1); }
+// leading ' keeps dates/times as plain text in the sheet
+function txt_(v) { return "'" + (v === null || v === undefined ? '' : String(v)); }
+function append_(name, arr) { sheet_(name).appendRow(arr.map(txt_)); }
+function seed_(name, list) { if (rows_(name).length === 0) list.forEach(function (x) { append_(name, [x]); }); }
+function list_(name) { return rows_(name).map(function (r) { return r[0].trim(); }).filter(String); }
+function replaceList_(name, values) {
+  const s = sheet_(name), last = s.getLastRow();
+  if (last > 1) s.deleteRows(2, last - 1);
+  values.forEach(function (v) { append_(name, [v]); });
+}
+function setting_(key, def) {
+  const r = rows_('Settings').filter(function (r) { return r[0] === key; })[0];
+  return r && r[1] ? r[1] : def;
+}
+function setSetting_(key, value) {
+  const s = sheet_('Settings'), all = rows_('Settings');
+  for (let i = 0; i < all.length; i++)
+    if (all[i][0] === key) { s.getRange(i + 2, 2, 1, 1).setValues([[txt_(value)]]); return; }
+  append_('Settings', [key, value]);
+}
+
+/* ================= Time helpers (server time, India) ================= */
+function now_(fmt) { return Utilities.formatDate(new Date(), TZ, fmt); }
+function todayKey_() { return now_('yyyy-MM-dd'); }
+function nowMinutes_() { const p = now_('HH:mm').split(':'); return Number(p[0]) * 60 + Number(p[1]); }
+function fmt12_(mins) { let h = Math.floor(mins / 60), m = mins % 60; const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return h + ':' + (m < 10 ? '0' : '') + m + ' ' + ap; }
+function msgDate_(key) { const p = key.split('-'); return Number(p[2]) + '-' + Number(p[1]) + '-' + p[0].slice(2); }
+
+function addDays_(key, n) { const d = new Date(key + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+const DAYS_ = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+function dow_(key) { return new Date(key + 'T00:00:00Z').getUTCDay(); }
+function parse12_(t) {            // "9:40 AM" -> minutes after midnight
+  const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(String(t || '').trim());
+  if (!m) return null;
+  return (Number(m[1]) % 12 + (m[3].toUpperCase() === 'PM' ? 12 : 0)) * 60 + Number(m[2]);
+}
+function num_(v) { const n = parseFloat(String(v || '').replace(/[^\d.]/g, '')); return isNaN(n) ? 0 : n; }
+
+/* ================= Users & sessions ================= */
+function hash_(username, password) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(username).toLowerCase() + ':' + password);
+  return bytes.map(function (b) { return ((b + 256) % 256).toString(16).padStart(2, '0'); }).join('');
+}
+function users_() {
+  return table_('Employees').rows.map(function (o) {
+    const name = o['Full Name'] || [o['First Name'], o['Last Name']].filter(String).join(' ');
+    return { username: String(o['Employee ID'] || '').trim().toLowerCase(), hash: o['Password Hash'], name: name,
+             first: o['First Name'], last: o['Last Name'], phone: o['Phone'] || '', branch: o['Branch'], joining: o['Joining Date'],
+             role: String(o['Role'] || 'Caller').toLowerCase() === 'admin' ? 'admin' : 'caller',
+             active: String(o['Status'] || 'Active').toLowerCase() === 'inactive' ? 'no' : 'yes',
+             created: o['Created On'], row: o._row, raw: o };
+  }).filter(function (u) { return u.username; });
+}
+function findUser_(username) {
+  username = String(username || '').trim().toLowerCase();
+  return users_().filter(function (u) { return u.username === username; })[0] || null;
+}
+function publicUser_(u) {
+  return { username: u.username, name: u.name, phone: u.phone, branch: u.branch, joining: u.joining, role: u.role, active: u.active, created: u.created };
+}
+function newToken_(username) {
+  const props = PropertiesService.getScriptProperties(), today = todayKey_(), all = props.getProperties();
+  Object.keys(all).forEach(function (k) {                // remove tokens from earlier days
+    if (k.indexOf('t_') === 0 && all[k].split('|')[1] !== today) props.deleteProperty(k);
+  });
+  const token = Utilities.getUuid();
+  props.setProperty('t_' + token, username + '|' + today);
+  return token;
+}
+function auth_(token, needAdmin) {
+  const v = token ? PropertiesService.getScriptProperties().getProperty('t_' + token) : null;
+  if (!v || v.split('|')[1] !== todayKey_()) throw new Error('SESSION_EXPIRED');
+  const u = findUser_(v.split('|')[0]);
+  if (!u || u.active !== 'yes') throw new Error('SESSION_EXPIRED');
+  if (needAdmin && u.role !== 'admin') throw new Error('Only admin can do this.');
+  return u;
+}
+
+// Login ID = first name + last name + last 4 digits of phone, e.g. vivekjadhao3210
+function makeUsername_(name, digits) {
+  const parts = name.toLowerCase().split(' ').map(function (w) { return w.replace(/[^a-z]/g, ''); }).filter(String);
+  let base = parts.length > 1 ? parts[0] + parts[parts.length - 1] : (parts[0] || 'caller');
+  base = base.slice(0, 20) + (digits ? digits.slice(-4) : '');
+  let u = base, n = 2;
+  while (findUser_(u)) u = base + (n++);
+  return u;
+}
+// 6-character password without confusing letters (no 0/o, 1/l/i)
+function makePassword_() {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  let out = '';
+  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+function appUrl_() { try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; } }
+
+/* ================= Attendance ================= */
+function attendance_() {
+  const out = [];
+  table_('Attendance').rows.forEach(function (o) {
+    const base = { date: o['Date'], username: String(o['Employee ID'] || '').toLowerCase(), name: o['Employee Name'],
+                   branch: o['Branch'], sm: o['SM'], row: o._row, raw: o };
+    if (!base.date || !base.username) return;
+    if (o['Login Time']) out.push(Object.assign({}, base, { type: 'login', time: o['Login Time'], cp: o['CP Firm'],
+      loc: o['Location'], late: o['Late'], message: o['Login Message'] }));
+    if (o['Logout Time']) out.push(Object.assign({}, base, { type: 'logout', time: o['Logout Time'], total: o['Total Calls'],
+      connect: o['Connect Calls'], lead: o['Lead of the Day'], visitToday: o['Site Visit Done'],
+      visitTom: o['Tomorrow Site Visit'], wtd: o['Site Visit Confirmed WTD'], message: o['Logout Message'] }));
+  });
+  return out;
+}
+
+function buildMessage_(type, dateKey, name, d) {
+  if (type === 'login') return [
+    'Date : ' + msgDate_(dateKey),
+    'Caller name : ' + name,
+    'Cp firm : ' + d.cp,
+    'SM :  ' + d.sm,
+    'Location:  ' + d.loc,
+    'Login time :' + d.time,
+  ].join('\n');
+  return [
+    'Date: ' + msgDate_(dateKey),
+    'Caller Name :- ' + name,
+    'SM Name - ' + d.sm,
+    'Total Calls:- ' + d.total,
+    'Connect Calls: ' + d.connect,
+    'Log out time:- ' + d.time,
+    'Lead of the day:- ' + d.lead,
+    'Site visit done today- ' + d.visitToday,
+    'Tomorrow site visit: ' + d.visitTom,
+    'Site visit confirmed WTD: ' + d.wtd,
+  ].join('\n');
+}
+
+function callerState_(u) {
+  const today = todayKey_();
+  const mine = attendance_().filter(function (a) { return a.username === u.username; });
+  const byDay = {};
+  mine.forEach(function (a) { (byDay[a.date] = byDay[a.date] || {})[a.type] = a; });
+  const days = Object.keys(byDay).sort().reverse();
+  return {
+    user: publicUser_(u),
+    isAdmin: false,
+    today: { date: today, login: (byDay[today] || {}).login || null, logout: (byDay[today] || {}).logout || null },
+    missed: days.filter(function (d) { return d < today && byDay[d].login && !byDay[d].logout; }).slice(0, 5),
+    history: days.slice(0, 10).map(function (d) {
+      return { date: d, login: byDay[d].login ? byDay[d].login.time : '', logout: byDay[d].logout ? byDay[d].logout.time : '' };
+    }),
+    config: { sms: list_('SMs'), locations: list_('Locations'), reminderAt: setting_('Logout reminder time', '19:00') },
+    serverMinutes: nowMinutes_(),
+  };
+}
+function stateFor_(u) { return u.role === 'admin' ? { user: publicUser_(u), isAdmin: true } : callerState_(u); }
+
+/* ================= API (called from the web page) ================= */
+function api(action, p) {
+  p = p || {};
+  try {
+    const fn = API[action];
+    if (!fn) throw new Error('Unknown action');
+    return JSON.parse(JSON.stringify({ ok: true, data: fn(p) }));
+  } catch (e) {
+    return { ok: false, error: e.message || String(e) };
+  }
+}
+
+const API = {
+  login: function (p) {
+    const u = findUser_(p.username);
+    if (!u || u.hash !== hash_(u.username, p.password || '')) throw new Error('Wrong Login ID or password.');
+    if (u.active !== 'yes') throw new Error('Your account is inactive. Please contact admin.');
+    const st = stateFor_(u);
+    st.token = newToken_(u.username);
+    return st;
+  },
+
+  me: function (p) { return stateFor_(auth_(p.token)); },
+
+  post: function (p) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      const u = auth_(p.token);
+      if (u.role === 'admin') throw new Error('Admin account cannot post attendance.');
+      const type = p.type, d = p.data || {}, today = todayKey_();
+      if (type !== 'login' && type !== 'logout') throw new Error('Wrong entry type.');
+      const st = callerState_(u);
+      if (st.today[type]) throw new Error((type === 'login' ? 'Login' : 'Logout') + ' already posted today at ' + st.today[type].time + '. Only one ' + type + ' is allowed per day.');
+      const rec = {};
+      if (type === 'login') {
+        const h = Number(d.hour), m = Number(d.min);
+        if (!(h >= 1 && h <= 12) || !(m >= 0 && m <= 59) || (d.ap !== 'AM' && d.ap !== 'PM')) throw new Error('Please choose the login time.');
+        const mins = (h % 12 + (d.ap === 'PM' ? 12 : 0)) * 60 + m;
+        if (mins > nowMinutes_()) throw new Error('Login time cannot be in the future.');
+        rec.time = fmt12_(mins);
+        rec.sm = String(d.sm || '').trim();
+        rec.cp = String(d.cp || '').trim();
+        rec.loc = String(d.loc || '').trim();
+        if (!rec.sm) throw new Error('Please choose the SM.');
+        if (!rec.cp) throw new Error('Please enter the CP firm.');
+        if (!rec.loc) throw new Error('Please enter the location.');
+      } else {
+        if (!st.today.login) throw new Error('Please post your Login first.');
+        rec.time = fmt12_(nowMinutes_());           // logout time = server time, cannot be changed
+        rec.sm = st.today.login.sm;                 // SM fixed from today's login
+        ['total', 'connect', 'lead', 'visitToday', 'visitTom', 'wtd'].forEach(function (k) {
+          rec[k] = String(d[k] === undefined ? '' : d[k]).trim();
+          if (!rec[k]) throw new Error('Please fill all logout fields (put 0 if none).');
+        });
+        if (Number(rec.connect) > Number(rec.total)) throw new Error('Connect calls cannot be more than Total calls.');
+      }
+      const message = buildMessage_(type, today, u.name, rec);
+      const posted = now_('dd-MM-yyyy HH:mm:ss');
+      if (type === 'login') {
+        const lp = setting_('Late after', '10:00').split(':');
+        appendObj_('Attendance', { 'Date': today, 'Day': DAYS_[dow_(today)].slice(0, 3), 'Employee ID': u.username,
+          'Employee Name': u.name, 'Branch': u.branch, 'SM': rec.sm, 'CP Firm': rec.cp, 'Location': rec.loc,
+          'Login Time': rec.time, 'Late': parse12_(rec.time) > Number(lp[0]) * 60 + Number(lp[1] || 0) ? 'Yes' : 'No',
+          'Status': 'Logout pending', 'Login Posted At': posted, 'Login Message': message });
+      } else {
+        const row = st.today.login.raw;
+        const lm = parse12_(st.today.login.time), om = parse12_(rec.time), tot = Number(rec.total), con = Number(rec.connect);
+        updateObj_('Attendance', row._row, Object.assign({}, row, {
+          'Logout Time': rec.time,
+          'Hours Worked': om > lm ? Math.floor((om - lm) / 60) + 'h ' + ((om - lm) % 60) + 'm' : '',
+          'Total Calls': rec.total, 'Connect Calls': rec.connect, 'Connect %': tot ? Math.round(con * 1000 / tot) / 1000 : '',
+          'Lead of the Day': rec.lead, 'Site Visit Done': rec.visitToday, 'Tomorrow Site Visit': rec.visitTom,
+          'Site Visit Confirmed WTD': rec.wtd, 'Status': 'Complete', 'Logout Posted At': posted, 'Logout Message': message }));
+      }
+      return { message: message, state: callerState_(u) };
+    } finally {
+      lock.releaseLock();
+    }
+  },
+
+  /* ---------- Admin ---------- */
+  adminData: function (p) {
+    auth_(p.token, true);
+    return {
+      users: users_().map(publicUser_),
+      branches: list_('Branches'), sms: list_('SMs'), locations: list_('Locations'),
+      reminderAt: setting_('Logout reminder time', '19:00'),
+      lateAfter: setting_('Late after', '10:00'),
+      weeklyOff: setting_('Weekly off', 'Monday'),
+      transfers: table_('Branch Transfers').rows.slice(-100).reverse().map(function (o) {
+        return { changedOn: o['Changed On'], username: o['Employee ID'], name: o['Employee Name'], from: o['From Branch'],
+                 to: o['To Branch'], effective: o['Effective Date'], by: o['Changed By'] };
+      }),
+      today: todayKey_(),
+      appUrl: appUrl_(),
+    };
+  },
+
+  saveUser: function (p) {
+    const admin = auth_(p.token, true), x = p.user || {};
+    const first = String(x.firstName || '').trim().replace(/\s+/g, ' ');
+    const last = String(x.lastName || '').trim().replace(/\s+/g, ' ');
+    if (!first) throw new Error('Please enter the first name.');
+    if (!last) throw new Error('Please enter the last name.');
+    const name = first + ' ' + last;
+    const role = x.role === 'admin' ? 'admin' : 'caller';
+    const active = x.active === 'no' ? 'no' : 'yes';
+    // phone: 10-digit mobile number, saved as +91 9876543210
+    let phone = String(x.phone || '').replace(/\D/g, '');
+    if (phone.length === 12 && phone.indexOf('91') === 0) phone = phone.slice(2);
+    if (phone.length === 11 && phone[0] === '0') phone = phone.slice(1);
+    if (phone && !/^[6-9]\d{9}$/.test(phone)) throw new Error('Please enter a valid 10-digit mobile number.');
+    if (!phone && role === 'caller') throw new Error('Please enter the phone number.');
+    const digits = phone;
+    if (phone) phone = '+91 ' + phone;
+
+    if (x.isNew) {
+      if (role === 'caller' && !x.branch) throw new Error('Please choose the branch.');
+      if (digits && users_().some(function (u) { return u.phone.replace(/\D/g, '').slice(-10) === digits; }))
+        throw new Error('This phone number is already added for another caller.');
+      const username = makeUsername_(name, digits);
+      const password = makePassword_();
+      appendObj_('Employees', { 'Employee ID': username, 'First Name': first, 'Last Name': last, 'Full Name': name,
+        'Phone': phone, 'Branch': x.branch || '', 'Joining Date': x.joining || '', 'Role': role === 'admin' ? 'Admin' : 'Caller',
+        'Status': active === 'no' ? 'Inactive' : 'Active', 'Created On': now_('yyyy-MM-dd HH:mm'), 'Password Hash': hash_(username, password) });
+      const out = API.adminData(p);
+      out.credentials = { name: name, username: username, password: password, phone: phone, isNew: true };
+      return out;
+    }
+
+    const existing = findUser_(x.username);
+    if (!existing) throw new Error('User not found.');
+    if (existing.username === admin.username && (active === 'no' || role !== 'admin'))
+      throw new Error('You cannot deactivate or demote your own admin account.');
+    if (digits && users_().some(function (u) { return u.username !== existing.username && u.phone.replace(/\D/g, '').slice(-10) === digits; }))
+      throw new Error('This phone number is already added for another caller.');
+    updateObj_('Employees', existing.row, Object.assign({}, existing.raw, { 'First Name': first, 'Last Name': last,
+      'Full Name': name, 'Phone': phone, 'Joining Date': x.joining || '', 'Role': role === 'admin' ? 'Admin' : 'Caller',
+      'Status': active === 'no' ? 'Inactive' : 'Active' }));
+    return API.adminData(p);
+  },
+
+  resetPassword: function (p) {
+    auth_(p.token, true);
+    const u = findUser_(p.username);
+    if (!u) throw new Error('User not found.');
+    const password = makePassword_();
+    updateObj_('Employees', u.row, Object.assign({}, u.raw, { 'Password Hash': hash_(u.username, password) }));
+    const out = API.adminData(p);
+    out.credentials = { name: u.name, username: u.username, password: password, phone: u.phone, isNew: false };
+    return out;
+  },
+
+  transfer: function (p) {
+    const admin = auth_(p.token, true);
+    const u = findUser_(p.username);
+    if (!u) throw new Error('User not found.');
+    const to = String(p.branch || '').trim();
+    if (!to) throw new Error('Please choose the new branch.');
+    if (to === u.branch) throw new Error(u.name + ' is already in ' + to + '.');
+    updateObj_('Employees', u.row, Object.assign({}, u.raw, { 'Branch': to }));
+    appendObj_('Branch Transfers', { 'Changed On': now_('yyyy-MM-dd HH:mm'), 'Employee ID': u.username, 'Employee Name': u.name,
+      'From Branch': u.branch, 'To Branch': to, 'Effective Date': p.effective || todayKey_(), 'Changed By': admin.name });
+    return API.adminData(p);
+  },
+
+  saveLists: function (p) {
+    auth_(p.token, true);
+    const clean = function (a) {
+      const seen = {};
+      return (a || []).map(function (s) { return String(s).trim(); })
+        .filter(function (s) { if (!s || seen[s.toLowerCase()]) return false; seen[s.toLowerCase()] = 1; return true; });
+    };
+    const b = clean(p.branches), s = clean(p.sms), l = clean(p.locations);
+    if (!b.length || !s.length || !l.length) throw new Error('Branches, SMs and Locations each need at least one entry.');
+    if (!/^\d{1,2}:\d{2}$/.test(p.reminderAt || '')) throw new Error('Reminder time must look like 19:00');
+    if (!/^\d{1,2}:\d{2}$/.test(p.lateAfter || '')) throw new Error('Late-after time must look like 10:00');
+    if (p.weeklyOff !== 'None' && DAYS_.indexOf(p.weeklyOff) < 0) throw new Error('Please choose the weekly off day.');
+    replaceList_('Branches', b); replaceList_('SMs', s); replaceList_('Locations', l);
+    setSetting_('Logout reminder time', p.reminderAt);
+    setSetting_('Late after', p.lateAfter);
+    setSetting_('Weekly off', p.weeklyOff);
+    return API.adminData(p);
+  },
+
+  /* Period report: branch summary + every employee's attendance & calls between two dates */
+  periodReport: function (p) {
+    auth_(p.token, true);
+    const today = todayKey_(), re = /^\d{4}-\d{2}-\d{2}$/;
+    let from = p.from, to = p.to;
+    if (!re.test(from || '') || !re.test(to || '')) throw new Error('Please choose From and To dates.');
+    if (to > today) to = today;
+    if (from > to) throw new Error('From date must be before To date.');
+    if ((new Date(to) - new Date(from)) / 864e5 > 92) throw new Error('Please choose at most 3 months at a time.');
+    const lateAfter = setting_('Late after', '10:00'), lp = lateAfter.split(':'), lateMin = Number(lp[0]) * 60 + Number(lp[1]);
+    const weeklyOff = setting_('Weekly off', 'Monday'), offDay = DAYS_.indexOf(weeklyOff);
+    const days = []; for (let d = from; d <= to; d = addDays_(d, 1)) days.push(d);
+
+    const by = {};
+    attendance_().forEach(function (a) {
+      if (a.date < from || a.date > to) return;
+      const u = (by[a.username] = by[a.username] || {});
+      (u[a.date] = u[a.date] || {})[a.type] = a;
+    });
+
+    const employees = users_().filter(function (u) {
+      return u.role === 'caller' && (u.active === 'yes' || by[u.username]);
+    }).map(function (u) {
+      const mine = by[u.username] || {}, start = u.joining && u.joining > from ? u.joining : from;
+      const e = { username: u.username, name: u.name, phone: u.phone, branch: u.branch, joining: u.joining, active: u.active,
+                  present: 0, absent: 0, late: 0, missed: 0, offWorked: 0, total: 0, connect: 0, lead: 0, visits: 0, daily: [] };
+      let loginSum = 0, workMins = 0, workN = 0;
+      days.forEach(function (d) {
+        if (d < start) return;
+        const li = (mine[d] || {}).login, lo = (mine[d] || {}).logout, isOff = offDay >= 0 && dow_(d) === offDay;
+        const row = { date: d, day: DAYS_[dow_(d)].slice(0, 3), login: li ? li.time : '', logout: lo ? lo.time : '',
+                      sm: li ? li.sm : '', hours: '', total: '', connect: '', lead: '', visits: '', status: '' };
+        if (li) {
+          e.present++; if (isOff) e.offWorked++;
+          const lm = parse12_(li.time), isLate = lm !== null && lm > lateMin;
+          if (lm !== null) loginSum += lm;
+          if (isLate) e.late++;
+          if (lo) {
+            const om = parse12_(lo.time);
+            if (lm !== null && om !== null && om > lm) { workMins += om - lm; workN++; row.hours = Math.floor((om - lm) / 60) + 'h ' + ((om - lm) % 60) + 'm'; }
+            row.total = lo.total; row.connect = lo.connect; row.lead = lo.lead; row.visits = lo.visitToday;
+            e.total += num_(lo.total); e.connect += num_(lo.connect); e.lead += num_(lo.lead); e.visits += num_(lo.visitToday);
+            row.status = isLate ? 'Late' : 'Present';
+          } else if (d < today) { e.missed++; row.status = 'Logout missed'; }
+          else row.status = 'Working';
+        } else if (isOff) row.status = 'Weekly off';
+        else if (d === today) row.status = 'Not logged in';
+        else { e.absent++; row.status = 'Absent'; }
+        e.daily.push(row);
+      });
+      e.daily.reverse();
+      e.attPct = e.present + e.absent ? Math.round(e.present * 100 / (e.present + e.absent)) : null;
+      e.connectPct = e.total ? Math.round(e.connect * 100 / e.total) : null;
+      e.avgLogin = e.present ? fmt12_(Math.round(loginSum / e.present)) : '';
+      e.avgHours = workN ? Math.floor(workMins / workN / 60) + 'h ' + Math.round(workMins / workN % 60) + 'm' : '';
+      return e;
+    });
+
+    const names = list_('Branches');
+    employees.forEach(function (e) { if (e.branch && names.indexOf(e.branch) < 0) names.push(e.branch); });
+    const branches = names.map(function (b) {
+      const es = employees.filter(function (e) { return e.branch === b; });
+      const sum = function (k) { return es.reduce(function (t, e) { return t + e[k]; }, 0); };
+      const pr = sum('present'), ab = sum('absent'), tot = sum('total'), con = sum('connect');
+      return { branch: b, callers: es.filter(function (e) { return e.active === 'yes'; }).length,
+               present: pr, absent: ab, late: sum('late'), missed: sum('missed'),
+               attPct: pr + ab ? Math.round(pr * 100 / (pr + ab)) : null,
+               total: tot, connect: con, connectPct: tot ? Math.round(con * 100 / tot) : null, lead: sum('lead'), visits: sum('visits') };
+    });
+    return { from: from, to: to, today: today, lateAfter: lateAfter, weeklyOff: weeklyOff, branches: branches, employees: employees };
+  },
+
+  report: function (p) {
+    auth_(p.token, true);
+    const date = p.date || todayKey_();
+    const att = attendance_().filter(function (a) { return a.date === date; });
+    const callers = users_().filter(function (u) { return u.role === 'caller' && u.active === 'yes'; });
+    return {
+      date: date,
+      isToday: date === todayKey_(),
+      isOff: DAYS_.indexOf(setting_('Weekly off', 'Monday')) === dow_(date),
+      reminderAt: setting_('Logout reminder time', '19:00'),
+      serverMinutes: nowMinutes_(),
+      rows: callers.map(function (u) {
+        const li = att.filter(function (a) { return a.username === u.username && a.type === 'login'; })[0];
+        const lo = att.filter(function (a) { return a.username === u.username && a.type === 'logout'; })[0];
+        return { name: u.name, username: u.username, branch: li ? li.branch : u.branch,
+                 login: li ? li.time : '', logout: lo ? lo.time : '', sm: li ? li.sm : '',
+                 total: lo ? lo.total : '', connect: lo ? lo.connect : '' };
+      }),
+    };
+  },
+};
+
+
+(function(){
+  if (SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users')) return;
+  setup();
+  const t = api('login',{username:'admin',password:'admin123'}).data.token;
+  const ids = {};
+  [['Vivek Jadhao','Elements Callers','2026-08-12','9876543210'],['Anishka Patil','Airoli Commercial Calling','2026-09-01','9823456781'],
+   ['Kinjal Shah','Eden Garden Airoli Caller','2026-07-20','9765432109'],['Muskan Khan','Upvan Callers','2026-10-05','9819988776'],
+   ['Jayshri Mahullkar','Nerul Commercial Callers','2026-06-15','9930011223'],['Supriya Mane','Juinagar Commercial Calling','2026-05-02','8879012345']]
+  .forEach(u => {
+    const c = api('saveUser',{token:t,user:{isNew:true,firstName:u[0].split(' ')[0],lastName:u[0].split(' ').slice(1).join(' '),branch:u[1],joining:u[2],phone:u[3],role:'caller',active:'yes'}}).data.credentials;
+    const usr = findUser_(c.username);                       // test password 1234 for every sample caller
+    updateObj_('Employees', usr.row, Object.assign({}, usr.raw, { 'Password Hash': hash_(usr.username, '1234') }));
+    ids[u[0].split(' ')[0].toLowerCase()] = c.username;
+  });
+
+  // ~6 weeks of sample history so the Reports tab has something to show
+  let seedN = 7; const rnd = () => (seedN = (seedN * 9301 + 49297) % 233280) / 233280;
+  const all = users_().filter(u => u.role === 'caller');
+  const smOf = {Elements:'Aman sir', Airoli:'sohail sir', Eden:'sohail sir', Upvan:'anand sir', Nerul:'Saurabh Khandagale', Juinagar:'anand sir'};
+  const today = todayKey_();
+  for (let d = addDays_(today, -45); d < today; d = addDays_(d, 1)) {
+    if (dow_(d) === 1) continue;
+    all.forEach(u => {
+      if (u.joining && d < u.joining) return;
+      if (rnd() < 0.08) return;                                     // absent
+      const lm = 9 * 60 + 10 + Math.floor(rnd() * (rnd() < 0.8 ? 50 : 100));
+      const sm = smOf[u.branch.split(' ')[0]] || 'sohail sir';
+      const tl = fmt12_(lm), row = { 'Date': d, 'Day': DAYS_[dow_(d)].slice(0, 3), 'Employee ID': u.username, 'Employee Name': u.name,
+        'Branch': u.branch, 'SM': sm, 'CP Firm': 'DT', 'Location': 'on site', 'Login Time': tl, 'Late': lm > 600 ? 'Yes' : 'No',
+        'Status': 'Logout missed', 'Login Posted At': d + ' 09:00' };
+      if (rnd() >= 0.05) {
+        const total = 60 + Math.floor(rnd() * 80), con = Math.floor(total * (0.3 + rnd() * 0.3)), om = 18 * 60 + Math.floor(rnd() * 90);
+        Object.assign(row, { 'Logout Time': fmt12_(om), 'Hours Worked': Math.floor((om - lm) / 60) + 'h ' + ((om - lm) % 60) + 'm',
+          'Total Calls': total, 'Connect Calls': con, 'Connect %': Math.round(con * 1000 / total) / 1000, 'Lead of the Day': Math.floor(rnd() * 4),
+          'Site Visit Done': Math.floor(rnd() * 3), 'Tomorrow Site Visit': Math.floor(rnd() * 3), 'Site Visit Confirmed WTD': Math.floor(rnd() * 6),
+          'Status': 'Complete', 'Logout Posted At': d + ' 19:00' });
+      }
+      appendObj_('Attendance', row);
+    });
+  }
+  api('transfer',{token:t,username:ids.muskan,branch:'Airoli Commercial Calling',effective:'2026-11-01'});
+  const now = new Date(Date.now() - 90*60000);
+  const h = now.getHours(), hh = String(h%12||12), ap = h>=12?'PM':'AM', mm = String(now.getMinutes()).padStart(2,'0');
+  const sm = {vivek:'Aman sir', anishka:'sohail sir', jayshri:'Saurabh Khandagale'};
+  Object.keys(sm).forEach(k => { const tk = api('login',{username:ids[k],password:'1234'}).data.token;
+    api('post',{token:tk,type:'login',data:{hour:hh,min:mm,ap:ap,sm:sm[k],cp:'DT',loc:'on site'}}); });
+  const tj = api('login',{username:ids.jayshri,password:'1234'}).data.token;
+  api('post',{token:tj,type:'logout',data:{total:'46',connect:'25',lead:'1',visitToday:'1',visitTom:'2',wtd:'3'}});
+  const pr = PropertiesService.getScriptProperties(); Object.keys(pr.getProperties()).forEach(k => pr.deleteProperty(k));
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team Attendance – Admin Panel (Test)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f3f5f4; --card:#fff; --ink:#1b2420; --muted:#66736d; --line:#dde3e0;
+    --brand:#128c7e; --brand-dark:#0b6b60; --wa:#25d366; --err:#c0392b;
+    --warn-bg:#fff4e0; --warn-line:#f0b45a; --warn-ink:#7a4a00;
+    --bad-bg:#fdecea; --bad-line:#e8a39b; --bad-ink:#8a1f14;
+    --ok-bg:#e7f6ef; --ok-ink:#0b6b45;
+  }
+  *{box-sizing:border-box}
+  body{flex-wrap:wrap;margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);
+    min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:28px 14px}
+  .card{background:var(--card);width:100%;max-width:440px;border-radius:16px;
+    box-shadow:0 4px 24px rgba(0,0,0,.07);padding:26px}
+  .card.wide{max-width:980px}
+  h1{font-size:22px;margin:0 0 4px} h2{font-size:17px;margin:0 0 10px}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 18px}
+  label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
+  input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;
+    font:inherit;font-size:15px;background:#fff;color:var(--ink)}
+  .datefield{cursor:pointer;padding-left:38px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23128c7e' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M16 3v4M8 3v4M3 10h18'/%3E%3C/svg%3E") no-repeat 12px center !important}
+  .cal{position:fixed;z-index:40;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:10px}
+  .cal button{width:auto;margin:0;padding:0;background:none;color:var(--ink);font-size:14px;border-radius:8px}
+  .cal-head{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+  .cal-head select{padding:6px 8px;font-size:14px;border-radius:8px}
+  .cal-head [data-nav]{font-size:22px;line-height:1;padding:4px 10px;color:var(--brand)}
+  .cal-head [data-nav]:hover{background:#eef2f0}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+  .cal-dow{font-size:11px;font-weight:600;color:var(--muted);padding:4px 0}
+  .cal-day{height:36px}
+  .cal-day:hover{background:#eef2f0}
+  .cal-day.today{outline:1px solid var(--brand)}
+  .cal-day.sel{background:var(--brand) !important;color:#fff}
+  .cal-day:disabled{color:#c9d1cd;cursor:not-allowed;background:none}
+  .cal-foot{display:flex;justify-content:space-between;margin-top:8px;border-top:1px solid var(--line);padding-top:8px}
+  .cal-foot button{color:var(--brand);font-weight:600;padding:6px 10px}
+  .cal-foot button:hover{background:#eef2f0}
+  textarea{min-height:150px;resize:vertical;line-height:1.5}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--brand);outline-offset:-1px;border-color:transparent}
+  input[readonly],select:disabled,input:disabled{background:#f7f9f8;color:var(--ink);opacity:1}
+  .phone{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .phone:focus-within{outline:2px solid var(--brand);outline-offset:-1px;border-color:transparent}
+  .phone span{background:#eef2f0;color:var(--ink);font-weight:600;padding:11px 12px;border-right:1px solid var(--line);user-select:none}
+  .phone input{border:0;border-radius:0;outline:none !important}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row.one{grid-template-columns:1fr}
+  .t3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  button,.btn{display:block;text-align:center;text-decoration:none;width:100%;margin-top:20px;padding:13px;border:0;border-radius:10px;font:inherit;
+    font-size:15px;font-weight:600;cursor:pointer;background:var(--brand);color:#fff}
+  button:hover{background:var(--brand-dark)}
+  button:disabled{background:#c9d1cd;color:#fff;cursor:not-allowed}
+  .wa{background:var(--wa) !important;color:#0b2e17 !important}
+  .ghost{background:transparent !important;color:var(--muted) !important;border:1px solid var(--line) !important;margin-top:10px}
+  .small{width:auto;display:inline-block;margin:0;padding:7px 11px;font-size:13px;border-radius:8px}
+  .err{color:var(--err);font-size:13px;margin-top:10px;min-height:16px}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:10px}
+  .who{font-size:14px;color:var(--muted)} .who b{color:var(--ink)}
+  .link{background:none !important;border:0;color:var(--brand);font-weight:600;width:auto;margin:0;padding:0;font-size:14px}
+  .link:hover{text-decoration:underline}
+  .badge{display:inline-block;font-size:12px;font-weight:600;background:#eef2f0;color:var(--muted);padding:3px 9px;border-radius:999px;margin-left:6px}
+
+  .seg{display:grid;grid-template-columns:1fr 1fr;background:#eef2f0;border-radius:12px;padding:4px;gap:4px;margin-bottom:6px}
+  .seg.five{grid-template-columns:repeat(5,1fr)}
+  .quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .quick button{width:auto;margin:0;padding:6px 12px;font-size:13px;background:#eef2f0;color:var(--ink);border-radius:999px}
+  .quick button:hover{background:#dfe7e3}
+  .sechead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:26px;flex-wrap:wrap}
+  .sechead h2{margin:0}
+  .sechead .tools{display:flex;gap:8px;align-items:center}
+  .sechead select,.sechead input{width:auto;padding:7px 10px;font-size:13px}
+  .tops{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}
+  .top3{border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .top3 h3{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin:0 0 8px}
+  .top3 ol{margin:0;padding-left:18px;font-size:14px;line-height:1.7}
+  .top3 ol span{color:var(--muted)}
+  tr.click{cursor:pointer} tr.click:hover td{background:#f7f9f8}
+  td.num,th.num{text-align:right}
+  .bar{display:inline-block;width:46px;height:6px;background:#eef2f0;border-radius:3px;vertical-align:middle;margin-left:6px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--brand)}
+  .bar i.low{background:var(--err)}
+  .modal.wide{max-width:900px}
+  .seg button{margin:0;padding:10px;background:transparent;color:var(--muted);border-radius:9px;font-size:14px}
+  .seg button:hover{background:rgba(255,255,255,.6)}
+  .seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .tick{color:var(--ok-ink);margin-left:4px}
+  .status{display:flex;gap:8px;margin:12px 0 4px;flex-wrap:wrap}
+  .pill{font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;background:#eef2f0;color:var(--muted)}
+  .pill.done{background:var(--ok-bg);color:var(--ok-ink)}
+  .pill.bad{background:var(--bad-bg);color:var(--bad-ink)}
+  .pill.warn{background:var(--warn-bg);color:var(--warn-ink)}
+
+  .alert{border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.45;margin-top:14px;border:1px solid}
+  .alert b{display:block;margin-bottom:2px}
+  .alert.warn{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn-ink)}
+  .alert.bad{background:var(--bad-bg);border-color:var(--bad-line);color:var(--bad-ink)}
+  .alert.ok{background:var(--ok-bg);border-color:#9fd8bd;color:var(--ok-ink)}
+  .alert button{margin-top:10px;padding:9px;font-size:14px}
+
+  .preview{background:#0b141a;color:#e9edef;border-radius:10px;padding:12px 14px;margin-top:18px;
+    font-size:14px;line-height:1.55;white-space:pre-wrap;text-align:left}
+  .preview .h{color:#f7c35f;font-weight:600}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
+  .hidden{display:none !important}
+  .history{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}
+  .history h3{font-size:14px;margin:0 0 8px}
+  .history ul{list-style:none;padding:0;margin:0;font-size:13px;color:var(--muted)}
+  .history li{padding:6px 0;border-bottom:1px dashed var(--line)}
+  .miss{color:var(--err);font-weight:600}
+
+  /* tables */
+  .tablewrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:10px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{background:#f7f9f8;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+  tr:last-child td{border-bottom:0}
+  td .acts{display:flex;gap:6px}
+  .toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:14px}
+  .toolbar > div{min-width:170px}
+  .toolbar label{margin-top:0}
+  .toolbar button{width:auto;margin:0;padding:11px 16px}
+  .summary{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .stat{background:#f7f9f8;border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:120px}
+  .stat b{display:block;font-size:22px}
+  .stat span{font-size:12px;color:var(--muted)}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media (max-width:700px){ .grid3{grid-template-columns:1fr} .seg.five{grid-template-columns:1fr 1fr} .tops{grid-template-columns:1fr 1fr} }
+
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+  .modal{background:#fff;border-radius:14px;max-width:400px;width:100%;padding:22px;max-height:92vh;overflow:auto}
+  .modal .icon{font-size:34px;line-height:1;text-align:center}
+  .modal h2{font-size:18px;margin:10px 0 6px;text-align:center}
+  .modal p{font-size:14px;color:var(--muted);margin:0;text-align:center}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1b2420;color:#fff;
+    padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;max-width:90%;z-index:20}
+  .toast.show{opacity:1}
+  .loading{position:fixed;inset:0;background:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;z-index:30;font-weight:600;color:var(--muted)}
+</style>
+</head>
+<body>
+<div style="position:fixed;top:0;left:0;right:0;background:#fff4e0;color:#7a4a00;border-bottom:1px solid #f0b45a;font:13px Inter,sans-serif;padding:7px 12px;text-align:center;z-index:50">
+<b>TEST VERSION</b> – data is saved only in this browser. Admin: <b>admin / admin123</b> · Sample caller: <b>vivekjadhao3210</b> / <b>1234</b>
+· <a href="#" id="demoReset" style="color:#0b6b60;font-weight:600">Reset test data</a></div>
+<script>document.getElementById('demoReset').onclick=function(e){e.preventDefault();try{['__mock_db','__mock_props','att_token'].forEach(function(k){localStorage.removeItem(k)})}catch(x){}location.reload();};</script>
+<div style="height:34px"></div>
+<div class="loading hidden" id="loading">Please wait…</div>
+
+<!-- ================= SIGN IN ================= -->
+<div class="card" id="signInView">
+  <h1>Employee Sign in</h1>
+  <p class="sub">Sign in with the Login ID and password given by your admin.</p>
+  <form id="signInForm">
+    <label for="uname">Login ID</label>
+    <input id="uname" autocomplete="username" autocapitalize="none" placeholder="e.g. vivekjadhao3210" required>
+    <label for="pwd">Password</label>
+    <input id="pwd" type="password" autocomplete="current-password" placeholder="••••••" required>
+    <button type="submit">Sign in</button>
+    <div class="err" id="signInErr"></div>
+  </form>
+</div>
+
+<!-- ================= CALLER ================= -->
+<div class="card hidden" id="callerView">
+  <div class="top">
+    <div class="who">Signed in as <b id="whoName"></b><span class="badge" id="whoBranch"></span></div>
+    <button class="link" data-signout>Sign out</button>
+  </div>
+
+  <div class="seg">
+    <button type="button" id="tabLogin" class="on">Login</button>
+    <button type="button" id="tabLogout">Logout</button>
+  </div>
+  <div class="status">
+    <span class="pill" id="pillLogin"></span>
+    <span class="pill" id="pillLogout"></span>
+  </div>
+
+  <div class="alert bad hidden" id="remindToday">
+    <b>⏰ Kindly post the logout</b>
+    You posted your Login today at <span id="rtLoginTime"></span> but have not posted your Logout yet.
+    <button type="button" class="wa" id="rtGo">Post Logout now</button>
+  </div>
+  <div class="alert warn hidden" id="remindPast"></div>
+  <div class="alert hidden" id="doneBox"></div>
+
+  <form id="attForm">
+    <div class="row" id="dtRow">
+      <div><label>Date</label><input id="fDate" readonly></div>
+      <div id="timeCol"><label id="timeLabel">Logout time</label><input id="fTime" readonly></div>
+    </div>
+    <div id="loginTimeBox">
+      <label for="lHour">Login time</label>
+      <div class="t3">
+        <select id="lHour" aria-label="Hour"></select>
+        <select id="lMin" aria-label="Minute"></select>
+        <select id="lAp" aria-label="AM or PM"><option>AM</option><option>PM</option></select>
+      </div>
+    </div>
+
+    <label>Caller name</label>
+    <input id="fCaller" readonly>
+
+    <label for="fSm">SM name <span id="smLock" class="hidden" style="font-weight:400;color:var(--muted)">🔒 from today's Login</span></label>
+    <select id="fSm"></select>
+
+    <div id="loginFields">
+      <label for="fCp">CP firm</label>
+      <input id="fCp" placeholder="e.g. DT">
+      <label for="fLoc">Location</label>
+      <select id="fLoc"></select>
+      <input id="fLocOther" class="hidden" placeholder="Type location" style="margin-top:8px">
+    </div>
+
+    <div id="logoutFields" class="hidden">
+      <div class="row">
+        <div><label for="oTotal">Total calls</label><input id="oTotal" type="number" min="0" inputmode="numeric" placeholder="0"></div>
+        <div><label for="oConnect">Connect calls</label><input id="oConnect" type="number" min="0" inputmode="numeric" placeholder="0"></div>
+      </div>
+      <label for="oLead">Lead of the day</label>
+      <input id="oLead" placeholder="e.g. 2 or client name">
+      <div class="row">
+        <div><label for="oVisitToday">Site visit done today</label><input id="oVisitToday" placeholder="e.g. 1"></div>
+        <div><label for="oVisitTom">Tomorrow site visit</label><input id="oVisitTom" placeholder="e.g. 2"></div>
+      </div>
+      <label for="oWtd">Site visit confirmed WTD</label>
+      <input id="oWtd" placeholder="e.g. 4">
+    </div>
+
+    <div class="preview" id="preview"></div>
+    <p class="hint">This is exactly what will be pasted into WhatsApp. Choose your group there and send.</p>
+
+    <button type="submit" class="wa" id="submitBtn">Submit</button>
+    <div class="err" id="formErr"></div>
+  </form>
+
+  <div class="history">
+    <h3>Your last 10 days</h3>
+    <ul id="histList"></ul>
+  </div>
+</div>
+
+<!-- ================= ADMIN ================= -->
+<div class="card wide hidden" id="adminView">
+  <div class="top">
+    <div><h1 style="margin:0">Admin panel</h1><div class="who">Signed in as <b id="adminName"></b></div></div>
+    <button class="link" data-signout>Sign out</button>
+  </div>
+
+  <div class="seg five">
+    <button type="button" data-atab="report" class="on">Today</button>
+    <button type="button" data-atab="reports">Reports</button>
+    <button type="button" data-atab="callers">Callers</button>
+    <button type="button" data-atab="lists">Settings</button>
+    <button type="button" data-atab="transfers">Branch history</button>
+  </div>
+
+  <!-- Attendance report -->
+  <section id="a_report">
+    <div class="toolbar">
+      <div><label for="rDate">Date</label><input id="rDate" type="date"></div>
+      <div><label for="rBranch">Branch</label><select id="rBranch"></select></div>
+      <button type="button" class="wa" id="rRemind">Send logout reminder to group</button>
+    </div>
+    <div class="summary" id="rSummary"></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Caller</th><th>Branch</th><th>SM</th><th>Login</th><th>Logout</th><th>Calls (conn.)</th><th>Status</th></tr></thead>
+      <tbody id="rBody"></tbody>
+    </table></div>
+    <p class="hint">Full details of every entry are saved in the "Attendance" tab of your Google Sheet.</p>
+  </section>
+
+  <!-- Reports -->
+  <section id="a_reports" class="hidden">
+    <div class="toolbar">
+      <div><label for="pFrom">From</label><input id="pFrom" type="date"></div>
+      <div><label for="pTo">To</label><input id="pTo" type="date"></div>
+      <div><label for="pBranch">Branch</label><select id="pBranch"></select></div>
+      <button type="button" id="pLoad">Show report</button>
+    </div>
+    <div class="quick">
+      <button type="button" data-range="today">Today</button>
+      <button type="button" data-range="7">Last 7 days</button>
+      <button type="button" data-range="month">This month</button>
+      <button type="button" data-range="lastmonth">Last month</button>
+    </div>
+    <div id="pOut" class="hidden">
+      <div class="summary" id="pSummary"></div>
+      <p class="hint" id="pRules"></p>
+
+      <div class="sechead"><h2>Branch summary</h2><div class="tools"><button type="button" class="small ghost" data-copy="pBranchTable">Copy table</button></div></div>
+      <div class="tablewrap"><table id="pBranchTable">
+        <thead><tr><th>Branch</th><th class="num">Callers</th><th class="num">Present days</th><th class="num">Absent days</th><th class="num">Attendance</th><th class="num">Late</th><th class="num">Logout missed</th><th class="num">Total calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th></tr></thead>
+        <tbody id="pBranches"></tbody>
+      </table></div>
+
+      <div class="sechead"><h2>Top performers</h2></div>
+      <div class="tops" id="pTops"></div>
+
+      <div class="sechead"><h2>Employee attendance</h2>
+        <div class="tools">
+          <input id="pSearch" placeholder="Search name">
+          <select id="pSort">
+            <option value="attPct">Lowest attendance first</option>
+            <option value="name">Name A–Z</option>
+            <option value="connect">Most connect calls</option>
+            <option value="visits">Most site visits</option>
+            <option value="late">Most late logins</option>
+            <option value="missed">Most missed logouts</option>
+          </select>
+          <button type="button" class="small ghost" data-copy="pEmpTable">Copy table</button>
+        </div>
+      </div>
+      <div class="tablewrap"><table id="pEmpTable">
+        <thead><tr><th>Caller</th><th>Branch</th><th class="num">Present</th><th class="num">Absent</th><th class="num">Attendance</th><th class="num">Late</th><th class="num">Logout missed</th><th>Avg login</th><th class="num">Total calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th></tr></thead>
+        <tbody id="pEmps"></tbody>
+      </table></div>
+      <p class="hint">Tap a caller to see their day-by-day attendance.</p>
+    </div>
+  </section>
+
+  <!-- Callers -->
+  <section id="a_callers" class="hidden">
+    <div class="toolbar">
+      <div><label for="cSearch">Search</label><input id="cSearch" placeholder="Name, phone or Login ID"></div>
+      <div><label for="cBranch">Branch</label><select id="cBranch"></select></div>
+      <button type="button" id="cAdd">+ Add caller</button>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Name</th><th>Phone</th><th>Login ID</th><th>Branch</th><th>Joining date</th><th>Role</th><th>Status</th><th></th></tr></thead>
+      <tbody id="cBody"></tbody>
+    </table></div>
+  </section>
+
+  <!-- Lists -->
+  <section id="a_lists" class="hidden">
+    <p class="sub" style="margin-top:14px">One per line. These lists appear in the callers' dropdowns.</p>
+    <div class="grid3">
+      <div><label for="lBranches">Branches / projects</label><textarea id="lBranches"></textarea></div>
+      <div><label for="lSms">SM names</label><textarea id="lSms"></textarea></div>
+      <div><label for="lLocs">Locations</label><textarea id="lLocs"></textarea></div>
+    </div>
+    <div class="grid3" style="margin-top:6px">
+      <div><label for="lRemind">Logout reminder time (24-hour)</label><input id="lRemind" placeholder="19:00"></div>
+      <div><label for="lLate">Login counted late after (24-hour)</label><input id="lLate" placeholder="10:00"></div>
+      <div><label for="lOff">Weekly off day</label><select id="lOff"><option>Monday</option><option>Sunday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option><option value="None">No weekly off</option></select></div>
+    </div>
+    <button type="button" id="lSave" style="max-width:220px">Save settings</button>
+    <div class="err" id="lErr"></div>
+  </section>
+
+  <!-- Transfers -->
+  <section id="a_transfers" class="hidden">
+    <div class="tablewrap"><table>
+      <thead><tr><th>Changed on</th><th>Caller</th><th>From</th><th>To</th><th>Effective</th><th>By</th></tr></thead>
+      <tbody id="tBody"></tbody>
+    </table></div>
+  </section>
+</div>
+
+<!-- ================= MODALS ================= -->
+<div class="modal-bg hidden" id="modal">
+  <div class="modal">
+    <div class="icon" id="mIcon">⚠️</div>
+    <h2 id="mTitle"></h2>
+    <p id="mText"></p>
+    <button type="button" id="mOk">OK</button>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="confirm">
+  <div class="modal">
+    <div id="cStep1">
+      <div class="icon">⚠️</div>
+      <h2 id="cTitle"></h2>
+      <div class="alert bad">
+        <b>This cannot be changed later.</b>
+        Once posted, you cannot edit or post it again today. Kindly reconfirm your details before posting.
+      </div>
+      <div class="preview" id="cMsg" style="margin-top:12px"></div>
+      <button type="button" class="wa" id="cOk">Yes, details are correct – Post</button>
+      <button type="button" class="ghost" id="cEdit">No, go back and edit</button>
+    </div>
+    <div id="cStep2" class="hidden">
+      <div class="icon">✅</div>
+      <h2 id="c2Title">Saved</h2>
+      <p>Now open WhatsApp, choose your group and press send.</p>
+      <div class="preview" id="c2Msg"></div>
+      <a class="btn wa" id="c2Wa" href="#" target="_blank" rel="noopener">Open WhatsApp</a>
+      <button type="button" class="ghost" id="c2Copy">Copy message</button>
+      <button type="button" class="ghost" id="c2Close">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="userModal">
+  <div class="modal">
+    <h2 id="uTitle">Add caller</h2>
+    <form id="userForm">
+      <div class="row"><div><label for="uFirst">First name</label><input id="uFirst" placeholder="e.g. Vivek" autocapitalize="words"></div><div><label for="uLast">Last name</label><input id="uLast" placeholder="e.g. Jadhao" autocapitalize="words"></div></div>
+      <label for="uPhone">Phone number</label><div class="phone"><span>+91</span><input id="uPhone" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number"></div>
+      <div id="uIdBox" class="hidden">
+        <label>Login ID</label>
+        <div class="phone"><input id="uUser" readonly style="background:#f7f9f8"><button type="button" class="small" id="uReset" style="border-radius:0;white-space:nowrap">Reset password</button></div>
+      </div>
+      <div id="uAutoNote" class="alert ok" style="font-size:13px">🔑 Login ID and password will be created automatically after you press Save.</div>
+      <div id="uBranchBox"><label for="uBranch">Branch / project</label><select id="uBranch"></select></div>
+      <div id="uBranchNow" class="hint hidden"></div>
+      <label for="uJoin">Joining date <span style="font-weight:400;color:var(--muted)">(tap to open calendar)</span></label><input id="uJoin" type="date">
+      <div class="row">
+        <div><label for="uRole">Role</label><select id="uRole"><option value="caller">Caller</option><option value="admin">Admin</option></select></div>
+        <div><label for="uActive">Status</label><select id="uActive"><option value="yes">Active</option><option value="no">Inactive (left)</option></select></div>
+      </div>
+      <button type="submit">Save</button>
+      <button type="button" class="ghost" data-close="userModal">Cancel</button>
+      <div class="err" id="uErr"></div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="trModal">
+  <div class="modal">
+    <h2>Change branch</h2>
+    <p id="trWho"></p>
+    <label for="trBranch">New branch</label><select id="trBranch"></select>
+    <label for="trDate">Effective from</label><input id="trDate" type="date">
+    <button type="button" id="trSave">Move to new branch</button>
+    <button type="button" class="ghost" data-close="trModal">Cancel</button>
+    <div class="err" id="trErr"></div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="empModal">
+  <div class="modal wide">
+    <div class="top" style="margin-bottom:6px">
+      <div><h2 id="eName" style="text-align:left;margin:0"></h2><div class="who" id="eInfo"></div></div>
+      <button type="button" class="small ghost" data-close="empModal" style="margin:0">Close</button>
+    </div>
+    <div class="summary" id="eStats"></div>
+    <div class="sechead" style="margin-top:16px"><h2>Day by day</h2><button type="button" class="small ghost" data-copy="eTable">Copy table</button></div>
+    <div class="tablewrap"><table id="eTable">
+      <thead><tr><th>Date</th><th>Day</th><th>Status</th><th>Login</th><th>Logout</th><th>Hours</th><th>SM</th><th class="num">Calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th></tr></thead>
+      <tbody id="eDays"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="credModal">
+  <div class="modal">
+    <div class="icon">🔑</div>
+    <h2 id="crTitle">Caller added</h2>
+    <p>Share these login details with <b id="crName"></b>.</p>
+    <div class="preview" id="crBox" style="font-size:15px"></div>
+    <div class="alert warn" style="font-size:13px"><b>The password is shown only now.</b>Send it now or note it down. If it is lost, use “Reset password” in Edit.</div>
+    <a class="btn wa" id="crWa" href="#" target="_blank" rel="noopener">Send to caller on WhatsApp</a>
+    <button type="button" class="ghost" id="crCopy">Copy login details</button>
+    <button type="button" id="crDone">Done</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= helpers ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pad = n => String(n).padStart(2, "0");
+const v = id => $(id).value.trim();
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,x){ try{ localStorage.setItem(k,x); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+function msgDate(key){ const p = key.split("-"); return Number(p[2]) + "-" + Number(p[1]) + "-" + p[0].slice(2); }
+function niceDate(key){ if(!key) return ""; const p = key.split("-"); return p.length===3 ? p[2]+"-"+p[1]+"-"+p[0] : key; }
+function fmt12(mins){ let h=Math.floor(mins/60), m=mins%60; const ap=h>=12?"PM":"AM"; h=h%12||12; return h+":"+pad(m)+" "+ap; }
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),2600); }
+function popup(title, text, icon){ $("mTitle").textContent=title; $("mText").textContent=text; $("mIcon").textContent=icon||"⚠️"; $("modal").classList.remove("hidden"); }
+$("mOk").onclick = () => $("modal").classList.add("hidden");
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => $(b.dataset.close).classList.add("hidden"));
+function busy(on){ $("loading").classList.toggle("hidden", !on); }
+function fill(sel, items, selected, placeholder){
+  sel.innerHTML = (placeholder ? '<option value="">'+esc(placeholder)+'</option>' : "") +
+    items.map(x => '<option value="'+esc(x)+'">'+esc(x)+'</option>').join("");
+  if (selected != null && [...sel.options].some(o => o.value === selected)) sel.value = selected;
+}
+
+/* server call */
+let token = store.get("att_token");
+function call(action, params){
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler(r => {
+        if (r && r.ok) return resolve(r.data);
+        const err = (r && r.error) || "No response from server";
+        if (err === "SESSION_EXPIRED"){
+          const wasIn = $("signInView").classList.contains("hidden");
+          signOut();
+          if (wasIn) popup("Please sign in again", "Your session has ended. Please sign in again.");
+        }
+        reject(new Error(err));
+      })
+      .withFailureHandler(e => reject(new Error((e && e.message) || "Network problem. Please check internet and try again.")))
+      .api(action, Object.assign({ token }, params || {}));
+  });
+}
+
+/* ================= sign in / out ================= */
+$("signInForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("signInErr").textContent = "";
+  busy(true);
+  try{
+    const st = await call("login", { username: v("uname"), password: $("pwd").value });
+    token = st.token; store.set("att_token", token);
+    $("pwd").value = "";
+    show(st);
+  }catch(err){ if (err.message !== "SESSION_EXPIRED") $("signInErr").textContent = err.message; }
+  busy(false);
+});
+document.querySelectorAll("[data-signout]").forEach(b => b.onclick = signOut);
+function signOut(){
+  token = null; store.del("att_token");
+  ["callerView","adminView"].forEach(id => $(id).classList.add("hidden"));
+  $("signInView").classList.remove("hidden");
+}
+function show(st){
+  $("signInView").classList.add("hidden");
+  if (st.isAdmin){ $("callerView").classList.add("hidden"); $("adminView").classList.remove("hidden"); startAdmin(st); }
+  else { $("adminView").classList.add("hidden"); $("callerView").classList.remove("hidden"); startCaller(st); }
+}
+
+/* =====================================================
+   CALLER
+   ===================================================== */
+let S = null;          // caller state from server
+let mode = "login";
+const LOGOUT_IDS = ["oTotal","oConnect","oLead","oVisitToday","oVisitTom","oWtd"];
+
+fill($("lHour"), Array.from({length:12}, (_, i) => String(i+1)), "", "Hour");
+fill($("lMin"),  Array.from({length:60}, (_, i) => pad(i)), "", "Min");
+
+function startCaller(st){
+  S = st;
+  $("whoName").textContent = st.user.name;
+  $("whoBranch").textContent = st.user.branch || "";
+  $("fCaller").value = st.user.name;
+  const last = JSON.parse(store.get("att_last_" + st.user.username) || "{}");
+  fill($("fSm"), st.config.sms, last.sm || "", "Select SM");
+  fill($("fLoc"), [...st.config.locations, "Other…"], last.loc || st.config.locations[0]);
+  if (!$("fCp").value) $("fCp").value = last.cp || "";
+  setMode(st.today.login && !st.today.logout ? "logout" : "login");
+}
+
+$("tabLogin").onclick = () => setMode("login");
+$("tabLogout").onclick = () => setMode("logout");
+$("rtGo").onclick = () => setMode("logout");
+
+function setMode(m){
+  mode = m;
+  $("tabLogin").classList.toggle("on", m === "login");
+  $("tabLogout").classList.toggle("on", m === "logout");
+  $("loginFields").classList.toggle("hidden", m !== "login");
+  $("logoutFields").classList.toggle("hidden", m !== "logout");
+  $("formErr").textContent = "";
+  refresh();
+}
+
+function nowMinutes(){ const d = new Date(); return d.getHours()*60 + d.getMinutes(); }
+
+function refresh(){
+  if (!S) return;
+  const t = S.today, posted = t[mode];
+  $("fDate").value = msgDate(t.date);
+
+  // time: login = editable pickers until posted; logout = locked server time
+  const editLogin = mode === "login" && !posted;
+  $("loginTimeBox").classList.toggle("hidden", !editLogin);
+  $("timeCol").classList.toggle("hidden", editLogin);
+  $("dtRow").classList.toggle("one", editLogin);
+  $("timeLabel").textContent = mode === "login" ? "Login time" : "Logout time";
+  $("fTime").value = posted ? posted.time : fmt12(nowMinutes());
+
+  $("pillLogin").textContent  = t.login  ? "Login: " + t.login.time   : "Login: not posted";
+  $("pillLogout").textContent = t.logout ? "Logout: " + t.logout.time : "Logout: not posted";
+  $("pillLogin").classList.toggle("done", !!t.login);
+  $("pillLogout").classList.toggle("done", !!t.logout);
+  $("tabLogin").innerHTML  = "Login"  + (t.login  ? '<span class="tick">✓</span>' : "");
+  $("tabLogout").innerHTML = "Logout" + (t.logout ? '<span class="tick">✓</span>' : "");
+
+  const box = $("doneBox"); let blocked = false;
+  box.className = "alert hidden";
+  if (posted){
+    blocked = true; box.className = "alert warn";
+    box.innerHTML = "<b>⚠️ " + (mode==="login"?"Login":"Logout") + " already posted today</b>You posted your " + mode +
+      " at " + esc(posted.time) + ". Only one " + mode + " is allowed per day.";
+  } else if (mode === "logout" && !t.login){
+    blocked = true; box.className = "alert warn";
+    box.innerHTML = "<b>⚠️ Post your Login first</b>You can post the Logout only after today's Login.";
+  }
+  $("submitBtn").disabled = blocked;
+  $("submitBtn").textContent = blocked ? (posted ? "Already posted today" : "Login required first")
+    : "Submit " + (mode==="login"?"Login":"Logout") + " & open WhatsApp";
+  ["fCp","fSm","fLoc","fLocOther","lHour","lMin","lAp",...LOGOUT_IDS].forEach(id => $(id).disabled = blocked);
+  if (mode === "logout"){
+    if (t.login) fill($("fSm"), S.config.sms.includes(t.login.sm) ? S.config.sms : [t.login.sm, ...S.config.sms], t.login.sm);
+    $("fSm").disabled = true;
+  } else if (!t.login) {
+    $("fSm").disabled = false;
+  }
+  $("smLock").classList.toggle("hidden", mode !== "logout");
+
+  // reminders
+  const [rh, rm] = (S.config.reminderAt || "19:00").split(":").map(Number);
+  const late = nowMinutes() >= rh*60 + rm;
+  const need = t.login && !t.logout && late;
+  $("remindToday").classList.toggle("hidden", !need || mode === "logout");
+  if (need) $("rtLoginTime").textContent = t.login.time;
+  const past = $("remindPast");
+  past.classList.toggle("hidden", !S.missed.length);
+  if (S.missed.length) past.innerHTML = "<b>⚠️ Logout missed</b>You did not post your Logout on " +
+    S.missed.map(msgDate).join(", ") + ". Please inform your SM.";
+
+  updatePreview();
+  renderHistory();
+}
+
+function getLoc(){ return $("fLoc").value === "Other…" ? v("fLocOther") : $("fLoc").value; }
+function loginTimeText(){
+  const h = $("lHour").value, m = $("lMin").value;
+  if (!h || !m) return "";
+  return h + ":" + m + " " + $("lAp").value;
+}
+function buildMessage(){
+  const t = S.today, saved = t[mode];
+  if (saved && saved.message) return saved.message;
+  const date = msgDate(t.date);
+  if (mode === "login") return [
+    "Date : " + date,
+    "Caller name : " + S.user.name,
+    "Cp firm : " + v("fCp"),
+    "SM :  " + $("fSm").value,
+    "Location:  " + getLoc(),
+    "Login time :" + loginTimeText(),
+  ].join("\n");
+  return [
+    "Date: " + date,
+    "Caller Name :- " + S.user.name,
+    "SM Name - " + (t.login ? t.login.sm : ""),
+    "Total Calls:- " + v("oTotal"),
+    "Connect Calls: " + v("oConnect"),
+    "Log out time:- " + $("fTime").value,
+    "Lead of the day:- " + v("oLead"),
+    "Site visit done today- " + v("oVisitToday"),
+    "Tomorrow site visit: " + v("oVisitTom"),
+    "Site visit confirmed WTD: " + v("oWtd"),
+  ].join("\n");
+}
+function updatePreview(){
+  $("fLocOther").classList.toggle("hidden", $("fLoc").value !== "Other…");
+  $("preview").innerHTML = '<span class="h">' + esc(S.user.name) + '</span>\n' + esc(buildMessage());
+}
+["fCp","fSm","fLoc","fLocOther","lHour","lMin","lAp",...LOGOUT_IDS].forEach(id => {
+  $(id).addEventListener("input", updatePreview); $(id).addEventListener("change", updatePreview);
+});
+
+function validate(){
+  if (mode === "login"){
+    if (!loginTimeText()) return "Please choose the login time (hour and minute).";
+    const mins = (Number($("lHour").value) % 12 + ($("lAp").value === "PM" ? 12 : 0)) * 60 + Number($("lMin").value);
+    if (mins > nowMinutes()) return "Login time cannot be in the future.";
+    if (!$("fSm").value) return "Please choose the SM.";
+    if (!v("fCp")) return "Please enter the CP firm.";
+    if (!getLoc()) return "Please enter the location.";
+    return "";
+  }
+  const names = { oTotal:"Total calls", oConnect:"Connect calls", oLead:"Lead of the day",
+    oVisitToday:"Site visit done today", oVisitTom:"Tomorrow site visit", oWtd:"Site visit confirmed WTD" };
+  const empty = LOGOUT_IDS.filter(id => !v(id)).map(id => names[id]);
+  if (empty.length) return "Please fill: " + empty.join(", ") + " (put 0 if none).";
+  if (Number(v("oConnect")) > Number(v("oTotal"))) return "Connect calls cannot be more than Total calls.";
+  return "";
+}
+
+/* submit -> confirm -> server -> WhatsApp */
+let pending = null;
+$("attForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const err = validate(); $("formErr").textContent = err; if (err) return;
+  $("fTime").value = fmt12(nowMinutes());
+  pending = mode === "login"
+    ? { type:"login", data:{ hour:$("lHour").value, min:$("lMin").value, ap:$("lAp").value, sm:$("fSm").value, cp:v("fCp"), loc:getLoc() } }
+    : { type:"logout", data:{ total:v("oTotal"), connect:v("oConnect"), lead:v("oLead"), visitToday:v("oVisitToday"), visitTom:v("oVisitTom"), wtd:v("oWtd") } };
+  $("cTitle").textContent = "Confirm your " + (mode === "login" ? "Login" : "Logout");
+  $("cMsg").textContent = buildMessage() + (mode === "logout" ? "\n\n(Logout time is taken at the moment you press Post.)" : "");
+  $("cStep1").classList.remove("hidden"); $("cStep2").classList.add("hidden");
+  $("confirm").classList.remove("hidden");
+});
+$("cEdit").onclick = () => { pending = null; $("confirm").classList.add("hidden"); };
+$("c2Close").onclick = () => $("confirm").classList.add("hidden");
+$("cOk").onclick = async () => {
+  if (!pending) return;
+  const p = pending; pending = null;
+  $("cOk").disabled = true; busy(true);
+  try{
+    const res = await call("post", p);
+    if (p.type === "login") store.set("att_last_" + S.user.username, JSON.stringify({ sm:p.data.sm, loc:$("fLoc").value, cp:p.data.cp }));
+    else LOGOUT_IDS.forEach(id => $(id).value = "");
+    $("lHour").value = ""; $("lMin").value = ""; $("lAp").value = "AM";
+    S = res.state;
+    $("c2Title").textContent = (p.type === "login" ? "Login" : "Logout") + " saved";
+    $("c2Msg").textContent = res.message;
+    $("c2Wa").href = "https://api.whatsapp.com/send?text=" + encodeURIComponent(res.message);
+    $("cStep1").classList.add("hidden"); $("cStep2").classList.remove("hidden");
+    refresh();
+  }catch(err){
+    $("confirm").classList.add("hidden");
+    if (err.message !== "SESSION_EXPIRED"){ popup("Not posted", err.message); refreshFromServer(); }
+  }
+  $("cOk").disabled = false; busy(false);
+};
+$("c2Copy").onclick = async () => {
+  try{ await navigator.clipboard.writeText($("c2Msg").textContent); toast("Message copied"); }
+  catch(e){ toast("Copy blocked – long-press the message to copy"); }
+};
+async function refreshFromServer(){ try{ S = await call("me"); refresh(); }catch(e){} }
+
+function renderHistory(){
+  const list = $("histList");
+  if (!S.history.length){ list.innerHTML = "<li>No entries yet.</li>"; return; }
+  list.innerHTML = S.history.map(h => {
+    const out = h.logout ? esc(h.logout) : (h.date < S.today.date ? '<span class="miss">missed</span>' : "pending");
+    return "<li>" + msgDate(h.date) + " · Login " + (esc(h.login) || "—") + " · Logout " + out + "</li>";
+  }).join("");
+}
+setInterval(() => { if (S && !$("callerView").classList.contains("hidden")) refresh(); }, 30000);
+
+/* =====================================================
+   ADMIN
+   ===================================================== */
+let A = null;          // admin data
+let R = null;          // report
+
+function startAdmin(st){
+  $("adminName").textContent = st.user.name;
+  loadAdmin().then(() => { $("rDate").value = A.today; loadReport(); });
+}
+async function loadAdmin(){
+  busy(true);
+  try{ A = await call("adminData"); renderAdmin(); }catch(e){ if (e.message !== "SESSION_EXPIRED") popup("Error", e.message); }
+  busy(false);
+}
+document.querySelectorAll("[data-atab]").forEach(b => b.onclick = () => {
+  document.querySelectorAll("[data-atab]").forEach(x => x.classList.toggle("on", x === b));
+  ["report","reports","callers","lists","transfers"].forEach(n => $("a_" + n).classList.toggle("hidden", n !== b.dataset.atab));
+  if (b.dataset.atab === "report") loadReport();
+  if (b.dataset.atab === "reports" && !PR) setRange("month");
+});
+
+function renderAdmin(){
+  fill($("rBranch"), A.branches, $("rBranch").value, "All branches");
+  fill($("cBranch"), A.branches, $("cBranch").value, "All branches");
+  fill($("pBranch"), A.branches, $("pBranch").value, "All branches");
+  renderCallers();
+  $("lBranches").value = A.branches.join("\n");
+  $("lSms").value = A.sms.join("\n");
+  $("lLocs").value = A.locations.join("\n");
+  $("lRemind").value = A.reminderAt;
+  $("lLate").value = A.lateAfter;
+  $("lOff").value = A.weeklyOff;
+  $("tBody").innerHTML = A.transfers.length ? A.transfers.map(t =>
+    "<tr><td>"+esc(t.changedOn)+"</td><td>"+esc(t.name)+"</td><td>"+esc(t.from||"—")+"</td><td>"+esc(t.to)+"</td><td>"+esc(niceDate(t.effective))+"</td><td>"+esc(t.by)+"</td></tr>"
+  ).join("") : '<tr><td colspan="6" style="color:var(--muted)">No branch changes yet.</td></tr>';
+}
+
+/* ---- attendance report ---- */
+$("rDate").onchange = loadReport;
+$("rBranch").onchange = renderReport;
+async function loadReport(){
+  if (!A) return;
+  busy(true);
+  try{ R = await call("report", { date: $("rDate").value || A.today }); renderReport(); }
+  catch(e){ if (e.message !== "SESSION_EXPIRED") popup("Error", e.message); }
+  busy(false);
+}
+function statusOf(r){
+  if (!r.login) return R.isOff ? ["Weekly off",""] : R.isToday ? ["Not logged in","warn"] : ["Absent","bad"];
+  if (!r.logout){
+    const [h,m] = R.reminderAt.split(":").map(Number);
+    if (!R.isToday) return ["Logout missed","bad"];
+    return R.serverMinutes >= h*60+m ? ["Logout pending","bad"] : ["Working","done"];
+  }
+  return ["Done","done"];
+}
+function reportRows(){ const b = $("rBranch").value; return R.rows.filter(r => !b || r.branch === b); }
+function renderReport(){
+  if (!R) return;
+  const rows = reportRows();
+  const cnt = k => rows.filter(r => statusOf(r)[0] === k).length;
+  const logged = rows.filter(r => r.login).length;
+  $("rSummary").innerHTML = [
+    ["Callers", rows.length], ["Logged in", logged], ["Logged out", rows.filter(r => r.logout).length],
+    [R.isOff ? "Weekly off" : "Not logged in", rows.length - logged], ["Logout pending", cnt("Logout pending") + cnt("Logout missed")]
+  ].map(s => '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>').join("");
+  $("rBody").innerHTML = rows.length ? rows.map(r => {
+    const s = statusOf(r);
+    return "<tr><td>"+esc(r.name)+"</td><td>"+esc(r.branch)+"</td><td>"+esc(r.sm||"—")+"</td><td>"+esc(r.login||"—")+
+      "</td><td>"+esc(r.logout||"—")+"</td><td>"+(r.total ? esc(r.total)+" ("+esc(r.connect)+")" : "—")+
+      '</td><td><span class="pill '+s[1]+'">'+s[0]+"</span></td></tr>";
+  }).join("") : '<tr><td colspan="7" style="color:var(--muted)">No active callers. Add them in the Callers tab.</td></tr>';
+}
+$("rRemind").onclick = () => {
+  if (!R) return;
+  const pend = reportRows().filter(r => r.login && !r.logout);
+  if (!pend.length){ popup("Nobody pending", "Everyone who logged in has posted the logout.", "✅"); return; }
+  const msg = "⏰ Kindly post the logout\n\n" + pend.map((r,i) => (i+1) + ". " + r.name).join("\n") +
+    "\n\nDate: " + msgDate(R.date);
+  const a = document.createElement("a");
+  a.href = "https://api.whatsapp.com/send?text=" + encodeURIComponent(msg);
+  a.target = "_blank"; a.rel = "noopener";
+  document.body.appendChild(a); a.click(); a.remove();
+};
+
+/* ---- period reports ---- */
+let PR = null;
+function keyOf(d){ return d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate()); }
+function setRange(r){
+  const t = A.today, [y, m] = t.split("-").map(Number);
+  let from = t, to = t;
+  if (r === "7"){ const d = new Date(y, m-1, Number(t.slice(8))); d.setDate(d.getDate()-6); from = keyOf(d); }
+  if (r === "month") from = t.slice(0, 8) + "01";
+  if (r === "lastmonth"){ from = keyOf(new Date(y, m-2, 1)); to = keyOf(new Date(y, m-1, 0)); }
+  $("pFrom").value = from; $("pTo").value = to;
+  loadPeriod();
+}
+document.querySelectorAll("[data-range]").forEach(b => b.onclick = () => setRange(b.dataset.range));
+$("pLoad").onclick = loadPeriod;
+$("pBranch").onchange = renderPeriod;
+$("pSort").onchange = renderPeriod;
+$("pSearch").oninput = renderPeriod;
+async function loadPeriod(){
+  busy(true);
+  try{ PR = await call("periodReport", { from: $("pFrom").value, to: $("pTo").value }); renderPeriod(); }
+  catch(e){ if (e.message !== "SESSION_EXPIRED") popup("Report", e.message); }
+  busy(false);
+}
+const pct = x => x == null ? "—" : x + "%";
+const bar = x => x == null ? "" : '<span class="bar"><i class="'+(x < 75 ? "low" : "")+'" style="width:'+x+'%"></i></span>';
+const n0 = x => x ? Number(x).toLocaleString("en-IN") : "0";
+function renderPeriod(){
+  if (!PR) return;
+  $("pOut").classList.remove("hidden");
+  const b = $("pBranch").value;
+  const emps = PR.employees.filter(e => !b || e.branch === b);
+  const brs = PR.branches.filter(x => !b || x.branch === b);
+  const sum = k => emps.reduce((t, e) => t + e[k], 0);
+  const pr = sum("present"), ab = sum("absent"), tot = sum("total"), con = sum("connect");
+  $("pSummary").innerHTML = [
+    ["Callers", emps.filter(e => e.active === "yes").length],
+    ["Attendance", pr + ab ? Math.round(pr*100/(pr+ab)) + "%" : "—"],
+    ["Absent days", ab], ["Late logins", sum("late")], ["Logout missed", sum("missed")],
+    ["Total calls", n0(tot)], ["Connect", n0(con) + (tot ? " (" + Math.round(con*100/tot) + "%)" : "")],
+    ["Leads", n0(sum("lead"))], ["Site visits", n0(sum("visits"))]
+  ].map(s => '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>').join("");
+  $("pRules").textContent = niceDate(PR.from) + " to " + niceDate(PR.to) + " · Late = login after " + PR.lateAfter +
+    " · Weekly off: " + (PR.weeklyOff === "None" ? "none" : PR.weeklyOff) + " (not counted as absent) · Days before a caller's joining date are not counted.";
+
+  $("pBranches").innerHTML = brs.map(x => "<tr><td>"+esc(x.branch)+'</td><td class="num">'+x.callers+'</td><td class="num">'+x.present+
+    '</td><td class="num">'+x.absent+'</td><td class="num">'+pct(x.attPct)+bar(x.attPct)+'</td><td class="num">'+x.late+'</td><td class="num">'+x.missed+
+    '</td><td class="num">'+n0(x.total)+'</td><td class="num">'+n0(x.connect)+(x.connectPct!=null?" ("+x.connectPct+"%)":"")+
+    '</td><td class="num">'+n0(x.lead)+'</td><td class="num">'+n0(x.visits)+"</td></tr>").join("") ||
+    '<tr><td colspan="11" style="color:var(--muted)">No branches.</td></tr>';
+
+  const top = (k, label, fmt) => {
+    const list = emps.filter(e => e[k] != null && e[k] > 0).sort((a, c) => c[k] - a[k]).slice(0, 3);
+    return '<div class="top3"><h3>'+label+'</h3>' + (list.length ? "<ol>" + list.map(e =>
+      "<li>"+esc(e.name)+" <span>"+fmt(e)+"</span></li>").join("") + "</ol>" : '<span class="hint">No data yet</span>') + "</div>";
+  };
+  $("pTops").innerHTML = top("connect", "Most connect calls", e => n0(e.connect)) + top("visits", "Most site visits", e => n0(e.visits)) +
+    top("lead", "Most leads", e => n0(e.lead)) + top("attPct", "Best attendance", e => e.attPct + "% (" + e.present + " days)");
+
+  const q = v("pSearch").toLowerCase(), k = $("pSort").value;
+  const list = emps.filter(e => !q || e.name.toLowerCase().includes(q)).sort((a, c) =>
+    k === "name" ? a.name.localeCompare(c.name) :
+    k === "attPct" ? (a.attPct == null ? 999 : a.attPct) - (c.attPct == null ? 999 : c.attPct) : c[k] - a[k]);
+  $("pEmps").innerHTML = list.map(e => '<tr class="click" data-emp="'+esc(e.username)+'"><td>'+esc(e.name)+(e.active!=="yes"?' <span class="pill bad">Inactive</span>':"")+
+    "</td><td>"+esc(e.branch)+'</td><td class="num">'+e.present+'</td><td class="num">'+e.absent+'</td><td class="num">'+pct(e.attPct)+bar(e.attPct)+
+    '</td><td class="num">'+e.late+'</td><td class="num">'+e.missed+"</td><td>"+(e.avgLogin||"—")+
+    '</td><td class="num">'+n0(e.total)+'</td><td class="num">'+n0(e.connect)+(e.connectPct!=null?" ("+e.connectPct+"%)":"")+
+    '</td><td class="num">'+n0(e.lead)+'</td><td class="num">'+n0(e.visits)+"</td></tr>").join("") ||
+    '<tr><td colspan="12" style="color:var(--muted)">No callers for this filter.</td></tr>';
+  document.querySelectorAll("[data-emp]").forEach(r => r.onclick = () => openEmp(r.dataset.emp));
+}
+const statusCls = { "Present":"done", "Late":"warn", "Logout missed":"bad", "Absent":"bad", "Weekly off":"", "Working":"done", "Not logged in":"warn" };
+function openEmp(username){
+  const e = PR.employees.find(x => x.username === username); if (!e) return;
+  $("eName").textContent = e.name;
+  $("eInfo").textContent = [e.branch, e.phone, e.joining ? "Joined " + niceDate(e.joining) : "", "Login ID: " + e.username].filter(Boolean).join(" · ");
+  $("eStats").innerHTML = [["Present", e.present], ["Absent", e.absent], ["Attendance", pct(e.attPct)], ["Late", e.late],
+    ["Logout missed", e.missed], ["Avg login", e.avgLogin || "—"],
+    ["Calls", n0(e.total)], ["Connect", n0(e.connect) + (e.connectPct!=null ? " ("+e.connectPct+"%)" : "")], ["Leads", n0(e.lead)], ["Site visits", n0(e.visits)]]
+    .map(s => '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>').join("");
+  $("eDays").innerHTML = e.daily.map(d => "<tr><td>"+niceDate(d.date)+"</td><td>"+d.day+'</td><td><span class="pill '+(statusCls[d.status]||"")+'">'+d.status+
+    "</span></td><td>"+(esc(d.login)||"—")+"</td><td>"+(esc(d.logout)||"—")+"</td><td>"+(d.hours||"—")+"</td><td>"+(esc(d.sm)||"—")+
+    '</td><td class="num">'+(esc(d.total)||"—")+'</td><td class="num">'+(esc(d.connect)||"—")+'</td><td class="num">'+(esc(d.lead)||"—")+
+    '</td><td class="num">'+(esc(d.visits)||"—")+"</td></tr>").join("") || '<tr><td colspan="11" style="color:var(--muted)">No days in this period.</td></tr>';
+  $("empModal").classList.remove("hidden");
+}
+// copy any table as tab-separated text (pastes neatly into Excel / Google Sheets)
+document.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
+  const t = $(b.dataset.copy);
+  const text = [...t.querySelectorAll("tr")].map(r => [...r.children].map(c => c.innerText.trim()).join("\t")).join("\n");
+  try{ await navigator.clipboard.writeText(text); toast("Table copied – paste into Excel or Google Sheets"); }
+  catch(e){ toast("Copy blocked by the browser"); }
+});
+
+/* ---- callers ---- */
+$("cSearch").oninput = renderCallers;
+$("cBranch").onchange = renderCallers;
+function renderCallers(){
+  const q = v("cSearch").toLowerCase(), b = $("cBranch").value;
+  const list = A.users.filter(u => (!b || u.branch === b) &&
+    (!q || u.name.toLowerCase().includes(q) || u.username.includes(q) || (u.phone||"").includes(q)));
+  $("cBody").innerHTML = list.length ? list.map(u =>
+    "<tr><td>"+esc(u.name)+"</td><td>"+esc(u.phone||"—")+"</td><td>"+esc(u.username)+"</td><td>"+esc(u.branch||"—")+"</td><td>"+esc(niceDate(u.joining)||"—")+
+    "</td><td>"+(u.role==="admin"?"Admin":"Caller")+'</td><td><span class="pill '+(u.active==="yes"?"done":"bad")+'">'+
+    (u.active==="yes"?"Active":"Inactive")+'</span></td><td><div class="acts">'+
+    '<button class="small ghost" data-edit="'+esc(u.username)+'">Edit</button>'+
+    (u.role==="caller" ? '<button class="small" data-move="'+esc(u.username)+'">Change branch</button>' : "")+
+    "</div></td></tr>"
+  ).join("") : '<tr><td colspan="8" style="color:var(--muted)">No callers found.</td></tr>';
+  document.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openUser(b.dataset.edit));
+  document.querySelectorAll("[data-move]").forEach(b => b.onclick = () => openTransfer(b.dataset.move));
+}
+
+let editing = null;
+$("cAdd").onclick = () => openUser(null);
+function openUser(username){
+  editing = username ? A.users.find(u => u.username === username) : null;
+  $("uTitle").textContent = editing ? "Edit " + editing.name : "Add caller";
+  const nm = editing ? editing.name.trim().split(/\s+/) : [];
+  $("uFirst").value = nm[0] || "";
+  $("uLast").value = nm.slice(1).join(" ");
+  $("uPhone").value = editing ? String(editing.phone || "").replace(/\D/g, "").slice(-10) : "";
+  $("uUser").value = editing ? editing.username : "";
+  $("uIdBox").classList.toggle("hidden", !editing);
+  $("uAutoNote").classList.toggle("hidden", !!editing);
+  fill($("uBranch"), A.branches, "", "Select branch");
+  $("uBranchBox").classList.toggle("hidden", !!editing);
+  $("uBranchNow").classList.toggle("hidden", !editing);
+  if (editing) $("uBranchNow").textContent = "Branch: " + (editing.branch || "—") + " (use “Change branch” to move)";
+  $("uJoin").value = editing ? editing.joining : "";
+  $("uJoin").max = A.today;
+  $("uRole").value = editing ? editing.role : "caller";
+  $("uActive").value = editing ? editing.active : "yes";
+  $("uErr").textContent = "";
+  $("userModal").classList.remove("hidden");
+}
+$("userForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const user = { isNew: !editing, firstName: v("uFirst"), lastName: v("uLast"), phone: v("uPhone"), username: editing ? editing.username : "",
+    branch: $("uBranch").value, joining: $("uJoin").value, role: $("uRole").value, active: $("uActive").value };
+  busy(true);
+  try{ A = await call("saveUser", { user }); renderAdmin(); $("userModal").classList.add("hidden");
+       if (A.credentials) showCredentials(A.credentials); else toast("Saved"); }
+  catch(err){ $("uErr").textContent = err.message; }
+  busy(false);
+});
+
+let moving = null;
+function openTransfer(username){
+  moving = A.users.find(u => u.username === username);
+  $("trWho").textContent = moving.name + " is now in: " + (moving.branch || "—");
+  fill($("trBranch"), A.branches.filter(b => b !== moving.branch), "", "Select new branch");
+  $("trDate").value = A.today;
+  $("trErr").textContent = "";
+  $("trModal").classList.remove("hidden");
+}
+$("trSave").onclick = async () => {
+  busy(true);
+  try{ A = await call("transfer", { username: moving.username, branch: $("trBranch").value, effective: $("trDate").value });
+       renderAdmin(); $("trModal").classList.add("hidden"); toast(moving.name + " moved to " + $("trBranch").value); }
+  catch(err){ $("trErr").textContent = err.message; }
+  busy(false);
+};
+
+$("uPhone").addEventListener("input", () => { $("uPhone").value = $("uPhone").value.replace(/\D/g, "").slice(0, 10); });
+
+$("uReset").onclick = async () => {
+  if (!editing) return;
+  busy(true);
+  try{ A = await call("resetPassword", { username: editing.username }); renderAdmin();
+       $("userModal").classList.add("hidden"); showCredentials(A.credentials); }
+  catch(err){ $("uErr").textContent = err.message; }
+  busy(false);
+};
+function credText(c){
+  return "Hello " + c.name + ",\n\nYour login details for Team Attendance:\n" +
+    "Login ID: " + c.username + "\nPassword: " + c.password +
+    (A && A.appUrl ? "\nWebsite: " + A.appUrl : "") + "\n\nPlease do not share your password with anyone.";
+}
+function showCredentials(c){
+  $("crTitle").textContent = c.isNew ? "Caller added" : "New password created";
+  $("crName").textContent = c.name;
+  $("crBox").textContent = "Login ID:  " + c.username + "\nPassword:  " + c.password;
+  const digits = String(c.phone || "").replace(/\D/g, "").slice(-10);
+  $("crWa").href = "https://api.whatsapp.com/send?" + (digits ? "phone=91" + digits + "&" : "") + "text=" + encodeURIComponent(credText(c));
+  $("crWa").classList.toggle("hidden", !digits);
+  $("crCopy").dataset.text = credText(c);
+  $("credModal").classList.remove("hidden");
+}
+$("crCopy").onclick = async () => {
+  try{ await navigator.clipboard.writeText($("crCopy").dataset.text); toast("Login details copied"); }
+  catch(e){ toast("Copy blocked – long-press the details to copy"); }
+};
+$("crDone").onclick = () => $("credModal").classList.add("hidden");
+
+/* ---- lists ---- */
+$("lSave").onclick = async () => {
+  const lines = id => $(id).value.split("\n").map(s => s.trim()).filter(Boolean);
+  $("lErr").textContent = "";
+  busy(true);
+  try{ A = await call("saveLists", { branches: lines("lBranches"), sms: lines("lSms"), locations: lines("lLocs"), reminderAt: v("lRemind"), lateAfter: v("lLate"), weeklyOff: $("lOff").value });
+       renderAdmin(); toast("Settings saved"); }
+  catch(err){ $("lErr").textContent = err.message; }
+  busy(false);
+};
+
+/* ================= calendar date picker =================
+   Our own calendar (the browser's built-in one is blocked inside the page frame).
+   The original <input type=date> keeps its id and value (yyyy-mm-dd) so the rest of the code works. */
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const cal = document.createElement("div");
+cal.className = "cal hidden";
+document.body.appendChild(cal);
+let calFor = null, calView = null;
+
+function makeDatePicker(inp){
+  const disp = document.createElement("input");
+  disp.type = "text"; disp.readOnly = true; disp.className = "datefield"; disp.placeholder = "Select date";
+  disp.id = inp.id + "_show";
+  const lab = document.querySelector('label[for="' + inp.id + '"]'); if (lab) lab.htmlFor = disp.id;
+  inp.type = "hidden"; inp.after(disp);
+  let val = "";
+  Object.defineProperty(inp, "value", { configurable: true,
+    get: () => val,
+    set: x => { val = x || ""; disp.value = val ? niceDate(val) : ""; } });
+  inp._disp = disp;
+  disp.addEventListener("click", e => { e.stopPropagation(); openCal(inp); });
+}
+function openCal(inp){
+  calFor = inp;
+  const base = inp.value ? inp.value.split("-").map(Number) : null;
+  const t = new Date();
+  calView = base ? { y: base[0], m: base[1] - 1 } : { y: t.getFullYear(), m: t.getMonth() };
+  drawCal();
+  cal.classList.remove("hidden");
+  const r = inp._disp.getBoundingClientRect(), w = Math.min(310, window.innerWidth - 16);
+  cal.style.width = w + "px";
+  cal.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + "px";
+  const below = r.bottom + 6, h = cal.offsetHeight;
+  cal.style.top = (below + h < window.innerHeight ? below : Math.max(8, r.top - h - 6)) + "px";
+}
+function closeCal(){ cal.classList.add("hidden"); calFor = null; }
+function iso(y, m, d){ return y + "-" + pad(m + 1) + "-" + pad(d); }
+function drawCal(){
+  const { y, m } = calView, max = calFor.getAttribute("max") || "";
+  const first = (new Date(y, m, 1).getDay() + 6) % 7;            // Monday first
+  const days = new Date(y, m + 1, 0).getDate();
+  const t = new Date(), todayIso = iso(t.getFullYear(), t.getMonth(), t.getDate());
+  const years = []; for (let i = t.getFullYear() + 1; i >= t.getFullYear() - 30; i--) years.push(i);
+  let html = '<div class="cal-head"><button type="button" data-nav="-1">‹</button>' +
+    '<select data-cm>' + MONTHS.map((n, i) => '<option value="'+i+'"'+(i===m?" selected":"")+'>'+n+'</option>').join("") + '</select>' +
+    '<select data-cy>' + years.map(n => '<option'+(n===y?" selected":"")+'>'+n+'</option>').join("") + '</select>' +
+    '<button type="button" data-nav="1">›</button></div><div class="cal-grid">' +
+    ["Mo","Tu","We","Th","Fr","Sa","Su"].map(d => '<span class="cal-dow">'+d+'</span>').join("");
+  for (let i = 0; i < first; i++) html += "<span></span>";
+  for (let d = 1; d <= days; d++){
+    const k = iso(y, m, d), off = max && k > max;
+    html += '<button type="button" class="cal-day' + (k === calFor.value ? " sel" : "") + (k === todayIso ? " today" : "") +
+      '" data-day="' + k + '"' + (off ? " disabled" : "") + '>' + d + '</button>';
+  }
+  html += '</div><div class="cal-foot"><button type="button" data-today>Today</button><button type="button" data-close>Close</button></div>';
+  cal.innerHTML = html;
+}
+function pickDate(k){
+  const inp = calFor; inp.value = k; closeCal();
+  inp.dispatchEvent(new Event("change"));
+}
+cal.addEventListener("click", e => {
+  e.stopPropagation();
+  const b = e.target.closest("button"); if (!b || b.disabled) return;
+  if (b.dataset.nav){ calView.m += Number(b.dataset.nav);
+    if (calView.m < 0){ calView.m = 11; calView.y--; } if (calView.m > 11){ calView.m = 0; calView.y++; } drawCal(); }
+  else if (b.dataset.day) pickDate(b.dataset.day);
+  else if ("today" in b.dataset){ const t = new Date(), k = iso(t.getFullYear(), t.getMonth(), t.getDate());
+    const max = calFor.getAttribute("max"); if (!max || k <= max) pickDate(k); }
+  else if ("close" in b.dataset) closeCal();
+});
+cal.addEventListener("change", e => {
+  if (e.target.matches("[data-cm]")) calView.m = Number(e.target.value);
+  if (e.target.matches("[data-cy]")) calView.y = Number(e.target.value);
+  drawCal();
+});
+document.addEventListener("click", () => { if (calFor) closeCal(); });
+window.addEventListener("resize", closeCal);
+document.querySelectorAll("input[type=date]").forEach(makeDatePicker);
+
+/* ================= start ================= */
+(async function(){
+  if (!token) return;
+  busy(true);
+  try{ show(await call("me")); }catch(e){ signOut(); }
+  busy(false);
+})();
+</script>
+</body>
+</html>
