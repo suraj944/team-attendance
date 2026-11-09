@@ -984,7 +984,7 @@ function renderPeriod(){
     '<tr><td colspan="13" style="color:var(--muted)">No callers for this filter.</td></tr>';
   document.querySelectorAll("[data-emp]").forEach(r => r.onclick = () => openEmp(r.dataset.emp));
 }
-const statusCls = { "Present":"done", "Late":"warn", "Logout missed":"bad", "Absent":"bad", "Weekly off":"", "Working":"done", "Not logged in":"warn" };
+const statusCls = { "Present":"done", "Late":"warn", "Logout missed":"bad", "Absent":"bad", "Weekly off":"", "Working":"done", "Not logged in":"warn", "Before start":"" };
 function openEmp(username){
   const e = PR.employees.find(x => x.username === username); if (!e) return;
   $("eName").textContent = e.name;

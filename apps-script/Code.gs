@@ -67,7 +67,8 @@ function setup() {
   seed_('Locations', ['on site', 'office', 'field visit']);
   [['Logout reminder time', '19:00', 'After this time (24-hour), callers who have not posted the logout see "Kindly post the logout"'],
    ['Late after', '10:00', 'Login after this time (24-hour) is marked Late'],
-   ['Weekly off', 'Monday', 'This day is not counted as absent (write None for no weekly off)']].forEach(function (r) {
+   ['Weekly off', 'Monday', 'This day is not counted as absent (write None for no weekly off)'],
+   ['Tracking start date', todayKey_(), 'Absent days are counted only from this date (yyyy-mm-dd), so days before the website was used are not absent']].forEach(function (r) {
     if (!setting_(r[0], '')) append_('Settings', r);
   });
   buildSummaries_(ss);
@@ -90,7 +91,8 @@ function buildSummaries_(ss) {
   /* ---- Employee Summary ---- */
   let s = ss.getSheetByName('Employee Summary') || ss.insertSheet('Employee Summary');
   s.clear();
-  s.getRange(1, 1, 3, 2).setValues([['Month', first], ['Weekly off', ''], ['Weekend code', '']]);
+  s.getRange(1, 1, 4, 2).setValues([['Month', first], ['Weekly off', ''], ['Weekend code', ''], ['Tracking start', '']]);
+  s.getRange(4, 2).setFormula('=IFERROR(DATEVALUE(VLOOKUP("Tracking start date",Settings!A:B,2,FALSE)),0)');
   s.getRange(2, 2).setFormula('=IFERROR(VLOOKUP("Weekly off",Settings!A:B,2,FALSE),"Monday")');
   // 7-character weekend code for NETWORKDAYS.INTL (Mon..Sun, 1 = off day)
   s.getRange(3, 2).setFormula('=IFERROR(REPT("0",MATCH(B2,{"Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"},0)-1)&"1"&REPT("0",7-MATCH(B2,{"Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"},0)),"0000000")');
@@ -104,9 +106,10 @@ function buildSummaries_(ss) {
   const id = A('Employee ID'), dt = A('Date');
   const f = [];
   for (let r = 6; r < 6 + SUMMARY_ROWS; r++) {
-    const ID = '$A' + r, J = 'IF($D' + r + '="",0,$D' + r + ')';
+    const ID = '$A' + r, JOIN = 'IF($D' + r + '="",0,$D' + r + ')', J = 'MAX($B$4,' + JOIN + ')';
     const inMonth = id + ',' + ID + ',' + dt + ',">="&' + S + ',' + dt + ',"<="&' + END;
     const gone = id + ',' + ID + ',' + dt + ',">="&MAX(' + S + ',' + J + '),' + dt + ',"<="&' + PAST;
+    const goneJ = id + ',' + ID + ',' + dt + ',">="&MAX(' + S + ',' + JOIN + '),' + dt + ',"<="&' + PAST;
     const W = (x) => '=IF(' + ID + '="","",' + x + ')';
     f.push([
       W('MAX(0,NETWORKDAYS.INTL(MAX(' + S + ',' + J + '),' + PAST + ',$B$3))'),
@@ -114,7 +117,7 @@ function buildSummaries_(ss) {
       W('MAX(0,$E' + r + '-COUNTIFS(' + gone + ',' + A('Day') + ',"<>"&LEFT($B$2,3)))'),
       '=IF(OR(' + ID + '="",$F' + r + '+$G' + r + '=0),"",$F' + r + '/($F' + r + '+$G' + r + '))',
       W('COUNTIFS(' + inMonth + ',' + A('Late') + ',"Yes")'),
-      W('COUNTIFS(' + gone + ',' + A('Status') + ',"Logout pending")+COUNTIFS(' + gone + ',' + A('Status') + ',"Logout missed")'),
+      W('COUNTIFS(' + goneJ + ',' + A('Status') + ',"Logout pending")+COUNTIFS(' + goneJ + ',' + A('Status') + ',"Logout missed")'),
       W('SUMIFS(' + A('Total Calls') + ',' + inMonth + ')'),
       W('SUMIFS(' + A('Connect Calls') + ',' + inMonth + ')'),
       '=IF(OR(' + ID + '="",N($K' + r + ')=0),"",$L' + r + '/$K' + r + ')',
@@ -212,7 +215,9 @@ function format_(ss) {
   s = ss.getSheetByName('Employee Summary');
   s.getRange('B1').setNumberFormat('mmmm yyyy').setBackground('#fff4e0').setFontWeight('bold')
     .setDataValidation(SpreadsheetApp.newDataValidation().requireDate().build());
-  s.getRange('A1:A3').setFontWeight('bold'); s.getRange('A3:B3').setFontColor('#9aa5a0');
+  s.getRange('A1:A4').setFontWeight('bold'); s.getRange('A3:B3').setFontColor('#9aa5a0');
+  s.getRange('B4').setNumberFormat('dd-mmm-yyyy');
+  s.getRange(4, 4).setValue('(from Settings: absences are counted from this date)');
   s.getRange('D6:D').setNumberFormat('dd-mmm-yyyy');
   s.getRange('H6:H').setNumberFormat('0%'); s.getRange('M6:M').setNumberFormat('0%');
   s.setConditionalFormatRules([
@@ -286,10 +291,21 @@ function cell_(col, v) {
 }
 function headOf_(name) { return sheet_(name).getDataRange().getDisplayValues()[0].map(function (h) { return String(h).trim(); }); }
 function rowArr_(head, obj) { return head.map(function (h) { return h ? cell_(h, obj[h]) : ''; }); }
-function appendObj_(name, obj) { sheet_(name).appendRow(rowArr_(headOf_(name), obj)); }
+function appendObj_(name, obj) {
+  const s = sheet_(name), head = headOf_(name);
+  s.appendRow(rowArr_(head, obj));
+  fixDateFormat_(s, s.getLastRow(), head);
+}
 function updateObj_(name, rowNum, obj) {
-  const head = headOf_(name);
-  sheet_(name).getRange(rowNum, 1, 1, head.length).setValues([rowArr_(head, obj)]);
+  const s = sheet_(name), head = headOf_(name);
+  s.getRange(rowNum, 1, 1, head.length).setValues([rowArr_(head, obj)]);
+  fixDateFormat_(s, rowNum, head);
+}
+// Google Sheets gives a typed date its own style (2026-11-09); keep every date as 09-Nov-2026
+function fixDateFormat_(s, rowNum, head) {
+  head.forEach(function (h, i) {
+    if (DATE_COLS.indexOf(h) >= 0) s.getRange(rowNum, i + 1).setNumberFormat('dd-mmm-yyyy');
+  });
 }
 function colLetter_(name, col) {   // column letter of a header, e.g. ('Attendance','Status') -> 'T'
   let n = COLS[name].indexOf(col) + 1, out = '';
@@ -657,6 +673,7 @@ const API = {
     const lateAfter = setting_('Late after', '10:00'), lp = lateAfter.split(':'), lateMin = Number(lp[0]) * 60 + Number(lp[1]);
     const weeklyOff = setting_('Weekly off', 'Monday'), offDay = DAYS_.indexOf(weeklyOff);
     const days = []; for (let d = from; d <= to; d = addDays_(d, 1)) days.push(d);
+    const track = normDate_(setting_('Tracking start date', ''));
 
     const by = {};
     attendance_().forEach(function (a) {
@@ -668,7 +685,8 @@ const API = {
     const employees = users_().filter(function (u) {
       return u.role === 'caller' && (u.active === 'yes' || by[u.username]);
     }).map(function (u) {
-      const mine = by[u.username] || {}, start = u.joining && u.joining > from ? u.joining : from;
+      const mine = by[u.username] || {};
+      const start = u.joining && u.joining > from ? u.joining : from;
       const e = { username: u.username, name: u.name, phone: u.phone, branch: u.branch, joining: u.joining, active: u.active,
                   present: 0, absent: 0, late: 0, missed: 0, offWorked: 0, total: 0, connect: 0, lead: 0, visits: 0, booking: 0, daily: [] };
       let loginSum = 0, workMins = 0, workN = 0;
@@ -692,6 +710,7 @@ const API = {
           else row.status = 'Working';
         } else if (isOff) row.status = 'Weekly off';
         else if (d === today) row.status = 'Not logged in';
+        else if (track && d < track) row.status = 'Before start';   // before the website was used: not absent
         else { e.absent++; row.status = 'Absent'; }
         e.daily.push(row);
       });
