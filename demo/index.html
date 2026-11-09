@@ -1206,6 +1206,7 @@ const API = {
       <div><label for="pTo">To</label><input id="pTo" type="date"></div>
       <div><label for="pBranch">Branch</label><select id="pBranch"></select></div>
       <button type="button" id="pLoad">Show report</button>
+      <button type="button" id="pExcel" class="wa">⬇ Download Excel</button>
     </div>
     <div class="quick">
       <button type="button" data-range="today">Today</button>
@@ -1852,6 +1853,81 @@ document.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
   try{ await navigator.clipboard.writeText(text); toast("Table copied – paste into Excel or Google Sheets"); }
   catch(e){ toast("Copy blocked by the browser"); }
 });
+
+/* ---- Excel download ---- */
+function loadXLSX(){
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return new Promise((resolve, reject) => {
+    const sc = document.createElement("script");
+    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    sc.onload = () => resolve(window.XLSX);
+    sc.onerror = () => reject(new Error("Could not load the Excel tool. Check the internet connection."));
+    document.head.appendChild(sc);
+  });
+}
+const numOr = x => (x === "" || x == null || isNaN(Number(x))) ? (x || "") : Number(x);
+function sheetFrom(XLSX, rows, widths, pctCols){
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = widths.map(w => ({ wch: w }));
+  (pctCols || []).forEach(c => {
+    for (let r = 1; r < rows.length; r++){
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (ws[ref] && typeof ws[ref].v === "number") ws[ref].z = "0%";
+    }
+  });
+  return ws;
+}
+$("pExcel").onclick = async () => {
+  if (!PR){ popup("No report yet", "Choose the dates and press Show report first."); return; }
+  busy(true);
+  try{
+    const XLSX = await loadXLSX();
+    const b = $("pBranch").value;
+    const emps = PR.employees.filter(e => !b || e.branch === b);
+    const brs = PR.branches.filter(x => !b || x.branch === b);
+    const sum = k => emps.reduce((t, e) => t + e[k], 0);
+    const pr = sum("present"), ab = sum("absent"), tot = sum("total"), con = sum("connect");
+    const frac = (a, d) => d ? a / d : "";
+    const wb = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(wb, sheetFrom(XLSX, [
+      ["Team Attendance report"],
+      ["From", niceDate(PR.from)], ["To", niceDate(PR.to)], ["Branch", b || "All branches"],
+      ["Late after", PR.lateAfter], ["Weekly off", PR.weeklyOff], [],
+      ["Measure", "Value"],
+      ["Callers", emps.filter(e => e.active === "yes").length],
+      ["Present days", pr], ["Absent days", ab], ["Attendance %", frac(pr, pr + ab)],
+      ["Late logins", sum("late")], ["Logout missed", sum("missed")],
+      ["Total calls", tot], ["Connect calls", con], ["Connect %", frac(con, tot)],
+      ["Leads", sum("lead")], ["Site visits", sum("visits")],
+    ], [22, 22]), "Summary");
+    // percentage formats on the summary
+    const s0 = wb.Sheets["Summary"]; ["B12", "B17"].forEach(r => { if (s0[r] && typeof s0[r].v === "number") s0[r].z = "0%"; });
+
+    XLSX.utils.book_append_sheet(wb, sheetFrom(XLSX, [
+      ["Branch", "Callers", "Present days", "Absent days", "Attendance %", "Late logins", "Logout missed", "Total calls", "Connect calls", "Connect %", "Leads", "Site visits"],
+      ...brs.map(x => [x.branch, x.callers, x.present, x.absent, frac(x.present, x.present + x.absent), x.late, x.missed, x.total, x.connect, frac(x.connect, x.total), x.lead, x.visits])
+    ], [30, 9, 12, 12, 13, 11, 13, 11, 13, 10, 8, 10], [4, 9]), "Branch Summary");
+
+    XLSX.utils.book_append_sheet(wb, sheetFrom(XLSX, [
+      ["Employee ID", "Caller", "Phone", "Branch", "Joining date", "Status", "Present", "Absent", "Attendance %", "Late logins", "Logout missed", "Avg login", "Total calls", "Connect calls", "Connect %", "Leads", "Site visits"],
+      ...emps.slice().sort((a, c) => a.branch.localeCompare(c.branch) || a.name.localeCompare(c.name)).map(e =>
+        [e.username, e.name, e.phone || "", e.branch, niceDate(e.joining), e.active === "yes" ? "Active" : "Inactive", e.present, e.absent,
+         frac(e.present, e.present + e.absent), e.late, e.missed, e.avgLogin || "", e.total, e.connect, frac(e.connect, e.total), e.lead, e.visits])
+    ], [22, 22, 16, 28, 13, 9, 8, 8, 13, 11, 13, 10, 11, 13, 10, 7, 10], [8, 14]), "Employee Attendance");
+
+    const daily = [["Date", "Day", "Employee ID", "Caller", "Branch", "Status", "Login", "Logout", "Hours", "SM", "Total calls", "Connect calls", "Leads", "Site visits"]];
+    emps.forEach(e => e.daily.slice().reverse().forEach(d => daily.push([niceDate(d.date), d.day, e.username, e.name, e.branch, d.status,
+      d.login, d.logout, d.hours, d.sm, numOr(d.total), numOr(d.connect), numOr(d.lead), numOr(d.visits)])));
+    daily.splice(1, daily.length, ...daily.slice(1).sort((a, c) => a[0].split("-").reverse().join("").localeCompare(c[0].split("-").reverse().join("")) || a[3].localeCompare(c[3])));
+    XLSX.utils.book_append_sheet(wb, sheetFrom(XLSX, daily, [12, 6, 22, 22, 28, 14, 10, 10, 9, 18, 11, 13, 7, 10]), "Daily Details");
+
+    const name = "Attendance_Report_" + niceDate(PR.from) + "_to_" + niceDate(PR.to) + (b ? "_" + b.replace(/[^A-Za-z0-9]+/g, "_") : "") + ".xlsx";
+    XLSX.writeFile(wb, name);
+    toast("Excel report downloaded");
+  }catch(e){ popup("Download failed", e.message); }
+  busy(false);
+};
 
 /* ---- callers ---- */
 $("cSearch").oninput = renderCallers;
