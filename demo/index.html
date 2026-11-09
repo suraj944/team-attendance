@@ -82,6 +82,10 @@
 
 const TZ = 'Asia/Kolkata';
 
+// ID of the Google Sheet that stores all data (from its link: /spreadsheets/d/<ID>/edit)
+const SHEET_ID = '13NcJsjTp8ECfZ9iocGIQaAXtrkzfF5Ai_STyYir4ADU';
+function ss_() { return SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(SHEET_ID); }
+
 const COLS = {
   'Employees': ['Employee ID', 'First Name', 'Last Name', 'Full Name', 'Phone', 'Branch', 'Joining Date',
                 'Role', 'Status', 'Created On', 'Password Hash'],
@@ -109,7 +113,7 @@ function doGet() {
 
 /* ================= One-time setup ================= */
 function setup() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = ss_();
   Object.keys(COLS).forEach(function (name) {
     let s = ss.getSheetByName(name);
     if (!s) s = ss.insertSheet(name);
@@ -123,9 +127,9 @@ function setup() {
                      'Upvan Callers', 'Nerul Commercial Callers', 'Juinagar Commercial Calling']);
   seed_('SMs', ['sohail sir', 'Aman sir', 'anand sir', 'Saurabh Khandagale']);
   seed_('Locations', ['on site', 'office', 'field visit']);
-  [['Logout reminder time', '19:00', 'After this time (24-hour) callers who have not posted the logout see "Kindly post the logout"'],
+  [['Logout reminder time', '19:00', 'After this time (24-hour), callers who have not posted the logout see "Kindly post the logout"'],
    ['Late after', '10:00', 'Login after this time (24-hour) is marked Late'],
-   ['Weekly off', 'Monday', 'This day is not counted as absent (or None)']].forEach(function (r) {
+   ['Weekly off', 'Monday', 'This day is not counted as absent (write None for no weekly off)']].forEach(function (r) {
     if (!setting_(r[0], '')) append_('Settings', r);
   });
   buildSummaries_(ss);
@@ -148,11 +152,12 @@ function buildSummaries_(ss) {
   /* ---- Employee Summary ---- */
   let s = ss.getSheetByName('Employee Summary') || ss.insertSheet('Employee Summary');
   s.clear();
-  s.getRange(1, 1, 3, 2).setValues([['Month →', first], ['Weekly off', ''], ['Weekend code', '']]);
+  s.getRange(1, 1, 3, 2).setValues([['Month', first], ['Weekly off', ''], ['Weekend code', '']]);
   s.getRange(2, 2).setFormula('=IFERROR(VLOOKUP("Weekly off",Settings!A:B,2,FALSE),"Monday")');
   // 7-character weekend code for NETWORKDAYS.INTL (Mon..Sun, 1 = off day)
   s.getRange(3, 2).setFormula('=IFERROR(REPT("0",MATCH(B2,{"Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"},0)-1)&"1"&REPT("0",7-MATCH(B2,{"Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"},0)),"0000000")');
-  s.getRange(1, 4).setValue('← change the month in B1 (any date of that month). Everything below updates automatically.');
+  s.getRange(1, 4).setValue('Change the month in B1 (any date in that month). Everything below updates automatically.');
+  s.getRange(3, 4).setValue('(used by the formulas, do not edit)');
   const eh = ['Employee ID', 'Employee Name', 'Branch', 'Joining Date', 'Working Days', 'Present', 'Absent', 'Attendance %',
               'Late Logins', 'Logout Missed', 'Total Calls', 'Connect Calls', 'Connect %', 'Leads', 'Site Visits'];
   s.getRange(5, 1, 1, eh.length).setValues([eh]);
@@ -185,8 +190,8 @@ function buildSummaries_(ss) {
   /* ---- Branch Summary ---- */
   s = ss.getSheetByName('Branch Summary') || ss.insertSheet('Branch Summary');
   s.clear();
-  s.getRange(1, 1, 1, 2).setValues([['Month →', first]]);
-  s.getRange(1, 4).setValue('← change the month in B1. Present / calls are counted under the branch the caller was in on that day.');
+  s.getRange(1, 1, 1, 2).setValues([['Month', first]]);
+  s.getRange(1, 4).setValue('Change the month in B1. Present days and calls are counted under the branch the caller was in on that day.');
   const bh = ['Branch', 'Active Callers', 'Present Days', 'Late Logins', 'Logout Missed', 'Total Calls', 'Connect Calls',
               'Connect %', 'Leads', 'Site Visits'];
   s.getRange(3, 1, 1, bh.length).setValues([bh]);
@@ -322,7 +327,7 @@ function table_(name) {
   }
   return { sheet: s, head: head, rows: rows };
 }
-function ssTz_() { try { return SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || TZ; } catch (e) { return TZ; } }
+function ssTz_() { try { return ss_().getSpreadsheetTimeZone() || TZ; } catch (e) { return TZ; } }
 function normDate_(v) {            // accepts 2026-11-09, 09-11-2026, 09/11/2026
   v = String(v || '').trim();
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(v);
@@ -353,7 +358,7 @@ function colLetter_(name, col) {   // column letter of a header, e.g. ('Attendan
 }
 
 function sheet_(name) {
-  const s = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  const s = ss_().getSheetByName(name);
   if (!s) throw new Error('Sheet "' + name + '" missing – please run setup once.');
   return s;
 }
@@ -863,6 +868,55 @@ const API = {
   .card{background:var(--card);width:100%;max-width:440px;border-radius:16px;
     box-shadow:0 4px 24px rgba(0,0,0,.07);padding:26px}
   .card.wide{max-width:980px}
+
+  /* ===== Modern sign-in page (only while signed out) ===== */
+  body.auth{padding:0;align-items:stretch;background:#0b3f39}
+  .auth-wrap{display:none}
+  body.auth .auth-wrap{display:grid;grid-template-columns:1.1fr 1fr;width:100%;min-height:100vh}
+  .auth-hero{position:relative;overflow:hidden;color:#fff;padding:56px 56px 40px;display:flex;flex-direction:column;justify-content:space-between;
+    background:
+      radial-gradient(600px 400px at 85% 15%, rgba(37,211,102,.35), transparent 60%),
+      radial-gradient(500px 500px at 0% 100%, rgba(240,180,90,.22), transparent 60%),
+      linear-gradient(150deg,#0b5f55 0%,#0f7a6d 45%,#128c7e 100%)}
+  .auth-hero::before{content:"";position:absolute;inset:0;opacity:.5;pointer-events:none;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Ccircle cx='2' cy='2' r='1.4' fill='%23ffffff' fill-opacity='.18'/%3E%3C/svg%3E")}
+  .auth-hero .ring{position:absolute;border-radius:50%;border:2px solid rgba(255,255,255,.12)}
+  .auth-hero .r1{width:420px;height:420px;right:-140px;top:-120px}
+  .auth-hero .r2{width:260px;height:260px;right:-40px;top:-20px;border-color:rgba(255,255,255,.08)}
+  .auth-hero .r3{width:300px;height:300px;left:-120px;bottom:-140px;background:rgba(255,255,255,.05);border:0}
+  .logo{display:flex;align-items:center;gap:12px;font-weight:700;font-size:18px;position:relative}
+  .logo i{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.16);display:grid;place-items:center;backdrop-filter:blur(4px)}
+  .hero-text{position:relative;max-width:440px}
+  .hero-text h2{font-size:38px;line-height:1.15;margin:0 0 14px;font-weight:700;letter-spacing:-.5px}
+  .hero-text p{font-size:16px;line-height:1.55;margin:0 0 26px;color:rgba(255,255,255,.82)}
+  .feat{list-style:none;padding:0;margin:0;display:grid;gap:12px}
+  .feat li{display:flex;gap:12px;align-items:center;font-size:15px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);
+    padding:11px 14px;border-radius:12px;backdrop-filter:blur(4px)}
+  .feat li b{width:30px;height:30px;flex:none;border-radius:9px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:15px}
+  .hero-foot{position:relative;font-size:12px;color:rgba(255,255,255,.6)}
+  .auth-side{position:relative;z-index:2;background:#f6f8f7;display:flex;align-items:center;justify-content:center;padding:40px 24px}
+  body.auth #signInView{box-shadow:0 20px 50px rgba(11,63,57,.12);border-radius:20px;padding:34px 30px;max-width:400px}
+  #signInView .hello{display:none}
+  body.auth #signInView .hello{display:block;font-size:13px;font-weight:600;color:var(--brand);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+  body.auth #signInView h1{font-size:26px;letter-spacing:-.3px}
+  .field{position:relative}
+  .field svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;stroke:#8a9690;pointer-events:none}
+  .field input{padding-left:42px;height:48px;border-radius:12px;background:#f7f9f8;border-color:#e3e9e6}
+  .field input:focus{background:#fff}
+  .field .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:auto;margin:0;padding:8px 10px;background:none;color:var(--muted);font-size:13px;font-weight:600}
+  .field .eye:hover{background:#eef2f0}
+  body.auth #signInForm button[type=submit]{height:50px;border-radius:12px;font-size:16px;margin-top:24px;
+    background:linear-gradient(135deg,#0f7a6d,#128c7e 60%,#1fa874);box-shadow:0 8px 20px rgba(18,140,126,.28);display:flex;align-items:center;justify-content:center;gap:8px}
+  body.auth #signInForm button[type=submit]:hover{filter:brightness(1.05)}
+  .help{font-size:13px;color:var(--muted);text-align:center;margin-top:16px}
+  @media (max-width:860px){
+    body.auth .auth-wrap{grid-template-columns:1fr}
+    .auth-hero{padding:28px 22px 70px;min-height:auto}
+    .hero-text h2{font-size:26px}.hero-text p{margin-bottom:0;font-size:14px}
+    .feat,.hero-foot,.auth-hero .r2{display:none}
+    .auth-side{padding:0 14px 30px;margin-top:-46px;align-items:flex-start;background:transparent}
+    body.auth{background:#f6f8f7}
+  }
   h1{font-size:22px;margin:0 0 4px} h2{font-size:17px;margin:0 0 10px}
   .sub{color:var(--muted);font-size:14px;margin:0 0 18px}
   label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
@@ -986,7 +1040,7 @@ const API = {
   .loading{position:fixed;inset:0;background:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;z-index:30;font-weight:600;color:var(--muted)}
 </style>
 </head>
-<body>
+<body class="auth">
 <div style="position:fixed;top:0;left:0;right:0;background:#fff4e0;color:#7a4a00;border-bottom:1px solid #f0b45a;font:13px Inter,sans-serif;padding:7px 12px;text-align:center;z-index:50">
 <b>TEST VERSION</b> – data is saved only in this browser. Admin: <b>admin / admin123</b> · Sample caller: <b>vivekjadhao3210</b> / <b>1234</b>
 · <a href="#" id="demoReset" style="color:#0b6b60;font-weight:600">Reset test data</a></div>
@@ -995,17 +1049,44 @@ const API = {
 <div class="loading hidden" id="loading">Please wait…</div>
 
 <!-- ================= SIGN IN ================= -->
+<div class="auth-wrap">
+  <section class="auth-hero">
+    <span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span>
+    <div class="logo"><i><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></i>Team Attendance</div>
+    <div class="hero-text">
+      <h2>Start your day in a few seconds.</h2>
+      <p>Post your Login and Logout, and send the update to your WhatsApp group in the team format.</p>
+      <ul class="feat">
+        <li><b>⏱</b>Login and Logout once a day, with the correct time</li>
+        <li><b>💬</b>Message ready for WhatsApp, you choose the group</li>
+        <li><b>📊</b>Your attendance and calls saved for your SM</li>
+      </ul>
+    </div>
+    <div class="hero-foot">Your Login ID and password are given by your admin.</div>
+  </section>
+  <section class="auth-side" id="authSide"></section>
+</div>
+
 <div class="card" id="signInView">
-  <h1>Employee Sign in</h1>
-  <p class="sub">Sign in with the Login ID and password given by your admin.</p>
+  <div class="hello">Welcome back</div>
+  <h1>Sign in</h1>
+  <p class="sub">Use the Login ID and password from your admin.</p>
   <form id="signInForm">
     <label for="uname">Login ID</label>
-    <input id="uname" autocomplete="username" autocapitalize="none" placeholder="e.g. vivekjadhao3210" required>
+    <div class="field">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+      <input id="uname" autocomplete="username" autocapitalize="none" placeholder="e.g. vivekjadhao3210" required>
+    </div>
     <label for="pwd">Password</label>
-    <input id="pwd" type="password" autocomplete="current-password" placeholder="••••••" required>
-    <button type="submit">Sign in</button>
+    <div class="field">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      <input id="pwd" type="password" autocomplete="current-password" placeholder="Enter your password" required>
+      <button type="button" class="eye" id="pwdEye">Show</button>
+    </div>
+    <button type="submit">Sign in <span aria-hidden="true">→</span></button>
     <div class="err" id="signInErr"></div>
   </form>
+  <div class="help">Forgot your password? Ask your admin to reset it.</div>
 </div>
 
 <!-- ================= CALLER ================= -->
@@ -1367,12 +1448,22 @@ $("signInForm").addEventListener("submit", async e => {
   busy(false);
 });
 document.querySelectorAll("[data-signout]").forEach(b => b.onclick = signOut);
+function setAuth(on){
+  document.body.classList.toggle("auth", on);
+  const side = $("authSide"), card = $("signInView");
+  if (on) side.appendChild(card); else document.body.insertBefore(card, $("callerView"));
+}
+$("pwdEye").onclick = () => { const p = $("pwd"), sh = p.type === "password"; p.type = sh ? "text" : "password"; $("pwdEye").textContent = sh ? "Hide" : "Show"; };
+setAuth(true);
+
 function signOut(){
+  setAuth(true);
   token = null; store.del("att_token");
   ["callerView","adminView"].forEach(id => $(id).classList.add("hidden"));
   $("signInView").classList.remove("hidden");
 }
 function show(st){
+  setAuth(false);
   $("signInView").classList.add("hidden");
   if (st.isAdmin){ $("callerView").classList.add("hidden"); $("adminView").classList.remove("hidden"); startAdmin(st); }
   else { $("adminView").classList.add("hidden"); $("callerView").classList.remove("hidden"); startCaller(st); }
