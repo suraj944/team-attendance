@@ -20,6 +20,10 @@
 
 const TZ = 'Asia/Kolkata';
 
+// ID of the Google Sheet that stores all data (from its link: /spreadsheets/d/<ID>/edit)
+const SHEET_ID = '13NcJsjTp8ECfZ9iocGIQaAXtrkzfF5Ai_STyYir4ADU';
+function ss_() { return SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(SHEET_ID); }
+
 const COLS = {
   'Employees': ['Employee ID', 'First Name', 'Last Name', 'Full Name', 'Phone', 'Branch', 'Joining Date',
                 'Role', 'Status', 'Created On', 'Password Hash'],
@@ -47,7 +51,7 @@ function doGet() {
 
 /* ================= One-time setup ================= */
 function setup() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = ss_();
   Object.keys(COLS).forEach(function (name) {
     let s = ss.getSheetByName(name);
     if (!s) s = ss.insertSheet(name);
@@ -261,7 +265,7 @@ function table_(name) {
   }
   return { sheet: s, head: head, rows: rows };
 }
-function ssTz_() { try { return SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || TZ; } catch (e) { return TZ; } }
+function ssTz_() { try { return ss_().getSpreadsheetTimeZone() || TZ; } catch (e) { return TZ; } }
 function normDate_(v) {            // accepts 2026-11-09, 09-11-2026, 09/11/2026
   v = String(v || '').trim();
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(v);
@@ -292,7 +296,7 @@ function colLetter_(name, col) {   // column letter of a header, e.g. ('Attendan
 }
 
 function sheet_(name) {
-  const s = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  const s = ss_().getSheetByName(name);
   if (!s) throw new Error('Sheet "' + name + '" missing – please run setup once.');
   return s;
 }
