@@ -118,6 +118,15 @@
   .seg{display:grid;grid-template-columns:1fr 1fr;background:#eef2f0;border-radius:12px;padding:4px;gap:4px;margin-bottom:6px}
   .seg.five{grid-template-columns:repeat(5,1fr)}
   .seg.six{grid-template-columns:repeat(6,1fr)}
+  table.reg{font-size:12px}
+  table.reg th,table.reg td{padding:6px 4px;text-align:center;white-space:nowrap}
+  table.reg td.nm,table.reg th.nm{text-align:left;padding-left:10px;position:sticky;left:0;background:#fff;z-index:1}
+  table.reg td:nth-child(2),table.reg th:nth-child(2){text-align:left}
+  .rc{display:inline-block;min-width:24px;padding:3px 2px;border-radius:5px;font-weight:600;font-size:11px}
+  .rc.P{background:var(--ok-bg);color:var(--ok-ink)} .rc.L{background:var(--warn-bg);color:var(--warn-ink)}
+  .rc.M{background:#fbe3d6;color:#7a3210} .rc.A{background:var(--bad-bg);color:var(--bad-ink)}
+  .rc.WO{background:#eef2f0;color:var(--muted)} .rc.X{color:#b9c3be}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px;align-items:center}
   .quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
   .quick button{width:auto;margin:0;padding:6px 12px;font-size:13px;background:#eef2f0;color:var(--ink);border-radius:999px}
   .quick button:hover{background:#dfe7e3}
@@ -361,6 +370,13 @@
   <!-- Reports -->
   <section id="a_reports" class="hidden">
     <div class="toolbar">
+      <div><label for="pType">Report type</label><select id="pType">
+        <option value="summary">Summary (branches and callers)</option>
+        <option value="register">Monthly attendance register</option>
+        <option value="daily">Daily attendance</option>
+        <option value="late">Late and missed logout</option>
+        <option value="perf">Caller performance</option>
+      </select></div>
       <div><label for="pFrom">From</label><input id="pFrom" type="date"></div>
       <div><label for="pTo">To</label><input id="pTo" type="date"></div>
       <div><label for="pBranch">Branch</label><select id="pBranch"></select></div>
@@ -372,6 +388,13 @@
       <button type="button" data-range="7">Last 7 days</button>
       <button type="button" data-range="month">This month</button>
       <button type="button" data-range="lastmonth">Last month</button>
+    </div>
+    <div id="pAlt" class="hidden">
+      <div class="summary" id="aSummary"></div>
+      <p class="hint" id="aRules"></p>
+      <div class="sechead"><h2 id="aTitle"></h2><div class="tools" id="aTools"></div></div>
+      <div class="tablewrap"><table id="aTable"></table></div>
+      <div class="legend" id="aLegend"></div>
     </div>
     <div id="pOut" class="hidden">
       <div class="summary" id="pSummary"></div>
@@ -1087,6 +1110,7 @@ function setRange(r){
 document.querySelectorAll("[data-range]").forEach(b => b.onclick = () => setRange(b.dataset.range));
 $("pLoad").onclick = loadPeriod;
 $("pBranch").onchange = renderPeriod;
+$("pType").onchange = () => { if (PR) renderPeriod(); else loadPeriod(); };
 $("pSort").onchange = renderPeriod;
 $("pSearch").oninput = renderPeriod;
 async function loadPeriod(){
@@ -1100,7 +1124,10 @@ const bar = x => x == null ? "" : '<span class="bar"><i class="'+(x < 75 ? "low"
 const n0 = x => x ? Number(x).toLocaleString("en-IN") : "0";
 function renderPeriod(){
   if (!PR) return;
-  $("pOut").classList.remove("hidden");
+  const type = $("pType").value;
+  $("pAlt").classList.toggle("hidden", type === "summary");
+  $("pOut").classList.toggle("hidden", type !== "summary");
+  if (type !== "summary"){ renderAlt(type); return; }
   const b = $("pBranch").value;
   const emps = PR.employees.filter(e => !b || e.branch === b);
   const brs = PR.branches.filter(x => !b || x.branch === b);
@@ -1142,6 +1169,102 @@ function renderPeriod(){
     '</td><td class="num">'+n0(e.lead)+'</td><td class="num">'+n0(e.visits)+'</td><td class="num">'+n0(e.booking)+"</td></tr>").join("") ||
     '<tr><td colspan="13" style="color:var(--muted)">No callers for this filter.</td></tr>';
   document.querySelectorAll("[data-emp]").forEach(r => r.onclick = () => openEmp(r.dataset.emp));
+}
+/* ---- extra report types (built from the same period data) ---- */
+const REG_CODE = { "Present":"P", "Working":"P", "Late":"L", "Logout missed":"M", "Absent":"A", "Weekly off":"WO" };
+let aDay = "";
+function periodDays(){ const out = []; for (let d = PR.from; d <= PR.to; ){ out.push(d); const t = new Date(d + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + 1); d = t.toISOString().slice(0, 10); } return out; }
+function altEmps(){
+  const b = $("pBranch").value;
+  return PR.employees.filter(e => !b || e.branch === b).slice().sort((a, c) => a.branch.localeCompare(c.branch) || a.name.localeCompare(c.name));
+}
+function mins12(t){ const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(String(t||"").trim()); if (!m) return null; let h = Number(m[1]) % 12; if (/pm/i.test(m[3])) h += 12; return h * 60 + Number(m[2]); }
+function isLateDay(d){ const lp = String(PR.lateAfter||"10:00").split(":"), lm = mins12(d.login); return lm !== null && lm > Number(lp[0]) * 60 + Number(lp[1]); }
+const dayMap = e => { const m = {}; e.daily.forEach(d => m[d.date] = d); return m; };
+const stats = a => a.map(s => '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>').join("");
+function altData(type){
+  const emps = altEmps(), days = periodDays(), sum = k => emps.reduce((t, e) => t + e[k], 0);
+  if (type === "register"){
+    const head = ["Caller", "Branch", ...days.map(d => Number(d.slice(8)) + " " + DAYN(d)), "Present", "Late", "Missed", "Absent", "Off"];
+    const rows = emps.map(e => {
+      const m = dayMap(e), codes = days.map(d => !m[d] ? "" : (m[d].status === "Working" && isLateDay(m[d]) ? "L" : (REG_CODE[m[d].status] || "")));
+      const cnt = c => codes.filter(x => x === c).length;
+      return { e, codes, cells: [e.name, e.branch, ...codes, cnt("P") + cnt("L") + cnt("M"), cnt("L"), cnt("M"), cnt("A"), cnt("WO")] };
+    });
+    return { title: "Attendance register", head, rows, days,
+      summary: [["Callers", emps.length], ["Present days", sum("present")], ["Late", sum("late")], ["Logout missed", sum("missed")], ["Absent days", sum("absent")]] };
+  }
+  if (type === "daily"){
+    if (!aDay || aDay < PR.from || aDay > PR.to) aDay = PR.to;
+    const head = ["Caller", "Branch", "SM", "Login", "Logout", "Hours", "Calls", "Connect", "Bookings", "Status"];
+    const rows = emps.map(e => { const d = dayMap(e)[aDay]; return d ? { e, d, cells: [e.name, e.branch, d.sm, d.login, d.logout, d.hours, numOr(d.total), numOr(d.connect), numOr(d.booking), d.status] } : null; }).filter(Boolean);
+    const c = st => rows.filter(r => st.includes(r.d.status)).length;
+    return { title: "Attendance on " + niceDate(aDay), head, rows,
+      summary: [["Present", c(["Present","Late","Working","Logout missed"]) + " of " + rows.filter(r => r.d.status !== "Weekly off" && r.d.status !== "Before start").length],
+                ["Late", rows.filter(r => r.d.login && isLateDay(r.d)).length], ["Absent", c(["Absent"])], ["Not logged in", c(["Not logged in"])],
+                ["Logout pending", c(["Working"])], ["Logout missed", c(["Logout missed"])]] };
+  }
+  if (type === "late"){
+    const head = ["Caller", "Branch", "Late days", "Late dates", "Logout missed", "Missed dates", "Avg login"];
+    const rows = emps.filter(e => e.late || e.missed).sort((a, c) => (c.late + c.missed) - (a.late + a.missed) || a.name.localeCompare(c.name)).map(e => {
+      const dl = e.daily.filter(d => d.login && isLateDay(d)).map(d => niceDate(d.date).slice(0, 5)).reverse().join(", ");
+      const dm = e.daily.filter(d => d.status === "Logout missed").map(d => niceDate(d.date).slice(0, 5)).reverse().join(", ");
+      return { e, cells: [e.name, e.branch, e.late, dl, e.missed, dm, e.avgLogin || ""] };
+    });
+    const pend = (A && A.pendingRequests) || 0;
+    return { title: "Late logins and missed logouts", head, rows,
+      summary: [["Late logins", sum("late")], ["Missed logouts", sum("missed")], ["Callers with issues", rows.length], ["Pending logout requests", pend]] };
+  }
+  // performance
+  const head = ["Caller", "Branch", "Days worked", "Total calls", "Connect calls", "Connect %", "Calls per day", "Leads", "Site visits", "Bookings"];
+  const rows = emps.slice().sort((a, c) => c.connect - a.connect || c.total - a.total).map(e => {
+    const worked = e.daily.filter(d => d.logout).length;
+    return { e, cells: [e.name, e.branch, worked, e.total, e.connect, e.total ? e.connect / e.total : "", worked ? Math.round(e.total / worked) : "", e.lead, e.visits, e.booking] };
+  });
+  const tot = sum("total"), con = sum("connect");
+  return { title: "Caller performance", head, rows, pctCol: 5,
+    summary: [["Total calls", n0(tot)], ["Connect %", tot ? Math.round(con * 100 / tot) + "%" : "—"], ["Leads", n0(sum("lead"))], ["Site visits", n0(sum("visits"))], ["Bookings", n0(sum("booking"))]] };
+}
+function DAYN(d){ return ["Su","Mo","Tu","We","Th","Fr","Sa"][new Date(d + "T00:00:00Z").getUTCDay()]; }
+function renderAlt(type){
+  const D = altData(type);
+  $("aSummary").innerHTML = stats(D.summary);
+  $("aRules").textContent = niceDate(PR.from) + " to " + niceDate(PR.to) + ($("pBranch").value ? " · " + $("pBranch").value : " · All branches") +
+    " · Late = login after " + PR.lateAfter + " · Weekly off: " + PR.weeklyOff;
+  $("aTitle").textContent = D.title;
+  $("aTools").innerHTML = (type === "daily" ? '<select id="aDay">' + periodDays().reverse().map(d => '<option value="'+d+'"'+(d===aDay?" selected":"")+'>'+niceDate(d)+" ("+DAYN(d)+")</option>").join("") + "</select>" : "") +
+    '<button type="button" class="small ghost" id="aCopy">Copy table</button>';
+  if ($("aDay")) $("aDay").onchange = () => { aDay = $("aDay").value; renderAlt(type); };
+  $("aCopy").onclick = async () => {
+    const text = [...$("aTable").querySelectorAll("tr")].map(r => [...r.children].map(c => c.innerText.trim()).join("\t")).join("\n");
+    try{ await navigator.clipboard.writeText(text); toast("Table copied – paste into Excel or Google Sheets"); } catch(e){ toast("Copy blocked by the browser"); }
+  };
+  const t = $("aTable"); t.className = type === "register" ? "reg" : "";
+  const isNum = i => type === "register" ? i >= 2 : (type === "daily" ? (i >= 6 && i <= 8) : (type === "late" ? (i === 2 || i === 4) : i >= 2));
+  t.innerHTML = "<thead><tr>" + D.head.map((h, i) => '<th class="'+(i===0&&type==="register"?"nm":"")+(isNum(i)&&type!=="register"?" num":"")+'">'+esc(h)+"</th>").join("") + "</tr></thead><tbody>" +
+    (D.rows.length ? D.rows.map(r => '<tr class="click" data-emp="'+esc(r.e.username)+'">' + r.cells.map((c, i) => {
+      if (type === "register" && i >= 2 && i < 2 + D.days.length) return "<td>" + (c ? '<span class="rc '+c+'">'+c+"</span>" : '<span class="rc X">·</span>') + "</td>";
+      if (type === "register" && i === 0) return '<td class="nm">' + esc(c) + "</td>";
+      if (type === "daily" && i === 9) return '<td><span class="pill '+(statusCls[c]||"")+'">'+esc(c)+"</span></td>";
+      if (i === D.pctCol) return '<td class="num">' + (c === "" ? "—" : Math.round(c * 100) + "%") + "</td>";
+      const val = (c === "" || c == null) ? "—" : (typeof c === "number" ? n0(c) : esc(c));
+      return '<td class="'+(isNum(i)&&type!=="register"?"num":"")+'"'+(type==="late"&&(i===3||i===5)?' style="white-space:normal;min-width:140px"':"")+">" + val + "</td>";
+    }).join("") + "</tr>").join("")
+    : '<tr><td colspan="'+D.head.length+'" style="color:var(--muted)">'+(type==="late"?"No late logins or missed logouts in this period.":"No data for this filter.")+"</td></tr>") + "</tbody>";
+  t.querySelectorAll("[data-emp]").forEach(r => r.onclick = () => openEmp(r.dataset.emp));
+  $("aLegend").innerHTML = type === "register" ? [["P","Present"],["L","Late"],["M","Logout missed"],["A","Absent"],["WO","Weekly off"]].map(x => '<span><span class="rc '+x[0]+'">'+x[0]+"</span> "+x[1]+"</span>").join("") +
+    '<span><span class="rc X">·</span> Not counted (before joining or start)</span><span>Tap a caller for day-by-day details.</span>' : '<span>Tap a caller for day-by-day details.</span>';
+}
+async function altExcel(type){
+  const XLSX = await loadXLSX(), D = altData(type), b = $("pBranch").value;
+  const rows = [D.head, ...D.rows.map(r => r.cells.map(c => typeof c === "number" ? c : (c == null ? "" : String(c))))];
+  const widths = D.head.map((h, i) => i === 0 ? 22 : i === 1 ? 24 : type === "register" && i < 2 + D.days.length ? 6 : type === "late" && (i === 3 || i === 5) ? 40 : Math.max(10, h.length + 2));
+  const wb = XLSX.utils.book_new();
+  const ws = sheetFrom(XLSX, rows, widths, D.pctCol != null ? [D.pctCol] : []);
+  XLSX.utils.book_append_sheet(wb, ws, D.title.slice(0, 31).replace(/[\\\/\?\*\[\]:]/g, "-"));
+  const label = { register:"Attendance_Register", daily:"Daily_Attendance", late:"Late_and_Missed_Logout", perf:"Caller_Performance" }[type];
+  const range = type === "daily" ? niceDate(aDay) : niceDate(PR.from) + "_to_" + niceDate(PR.to);
+  XLSX.writeFile(wb, label + "_" + range + (b ? "_" + b.replace(/[^A-Za-z0-9]+/g, "_") : "") + ".xlsx");
 }
 const statusCls = { "Present":"done", "Late":"warn", "Logout missed":"bad", "Absent":"bad", "Weekly off":"", "Working":"done", "Not logged in":"warn", "Before start":"" };
 function openEmp(username){
@@ -1193,6 +1316,7 @@ $("pExcel").onclick = async () => {
   if (!PR){ popup("No report yet", "Choose the dates and press Show report first."); return; }
   busy(true);
   try{
+    if ($("pType").value !== "summary"){ await altExcel($("pType").value); toast("Excel report downloaded"); busy(false); return; }
     const XLSX = await loadXLSX();
     const b = $("pBranch").value;
     const emps = PR.employees.filter(e => !b || e.branch === b);
