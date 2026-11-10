@@ -117,6 +117,7 @@
 
   .seg{display:grid;grid-template-columns:1fr 1fr;background:#eef2f0;border-radius:12px;padding:4px;gap:4px;margin-bottom:6px}
   .seg.five{grid-template-columns:repeat(5,1fr)}
+  .seg.six{grid-template-columns:repeat(6,1fr)}
   .quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
   .quick button{width:auto;margin:0;padding:6px 12px;font-size:13px;background:#eef2f0;color:var(--ink);border-radius:999px}
   .quick button:hover{background:#dfe7e3}
@@ -179,7 +180,7 @@
   .stat b{display:block;font-size:22px}
   .stat span{font-size:12px;color:var(--muted)}
   .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-  @media (max-width:700px){ .grid3{grid-template-columns:1fr} .seg.five{grid-template-columns:1fr 1fr} .tops{grid-template-columns:1fr 1fr} }
+  @media (max-width:700px){ .grid3{grid-template-columns:1fr} .seg.five,.seg.six{grid-template-columns:1fr 1fr} .tops{grid-template-columns:1fr 1fr} }
 
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
   .modal{background:#fff;border-radius:14px;max-width:400px;width:100%;padding:22px;max-height:92vh;overflow:auto}
@@ -313,6 +314,13 @@
     <div class="err" id="formErr"></div>
   </form>
 
+  <div class="history" id="reqSection">
+    <div class="top" style="margin-bottom:8px"><h3 style="margin:0">Missed logout requests</h3>
+      <button type="button" class="small" id="reqOpen">+ Request missed logout</button></div>
+    <p class="hint" id="reqHint" style="margin-top:0">Forgot to post a Logout? Send the details to your admin. When the admin approves, it is added to your attendance.</p>
+    <ul id="reqList"></ul>
+  </div>
+
   <div class="history">
     <h3>Your last 10 days</h3>
     <ul id="histList"></ul>
@@ -326,11 +334,12 @@
     <button class="link" data-signout>Sign out</button>
   </div>
 
-  <div class="seg five">
+  <div class="seg six">
     <button type="button" data-atab="report" class="on">Today</button>
     <button type="button" data-atab="reports">Reports</button>
     <button type="button" data-atab="callers">Callers</button>
     <button type="button" data-atab="lists">Settings</button>
+    <button type="button" data-atab="requests">Requests <span class="badge hidden" id="reqBadge" style="background:var(--err);color:#fff;margin-left:2px">0</span></button>
     <button type="button" data-atab="transfers">Branch history</button>
   </div>
 
@@ -430,6 +439,21 @@
     <div class="err" id="lErr"></div>
   </section>
 
+  <!-- Missed logout requests -->
+  <section id="a_requests" class="hidden">
+    <div class="sechead"><h2>Waiting for approval</h2></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Requested on</th><th>Caller</th><th>Branch</th><th>Date</th><th>Login</th><th>Logout asked</th><th class="num">Calls (conn.)</th><th class="num">Booking</th><th>Reason</th><th></th></tr></thead>
+      <tbody id="qPending"></tbody>
+    </table></div>
+    <div class="sechead"><h2>Decided</h2></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Date</th><th>Caller</th><th>Logout</th><th>Status</th><th>Decided on</th><th>By</th><th>Note</th></tr></thead>
+      <tbody id="qDone"></tbody>
+    </table></div>
+    <p class="hint">Approving fills the Logout into that day's row in the Attendance sheet and marks the day Complete. Requests are also saved in the "Logout Requests" sheet.</p>
+  </section>
+
   <!-- Transfers -->
   <section id="a_transfers" class="hidden">
     <div class="tablewrap"><table>
@@ -523,6 +547,48 @@
       <thead><tr><th>Date</th><th>Day</th><th>Status</th><th>Login</th><th>Logout</th><th>Hours</th><th>SM</th><th class="num">Calls</th><th class="num">Connect</th><th class="num">Leads</th><th class="num">Site visits</th><th class="num">Bookings</th></tr></thead>
       <tbody id="eDays"></tbody>
     </table></div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="reqModal">
+  <div class="modal">
+    <h2>Request missed logout</h2>
+    <p>Your admin will check this. When approved, the Logout is added to your attendance.</p>
+    <label for="rqDate">Day you forgot to log out</label><select id="rqDate"></select>
+    <label for="rqHour">Logout time on that day</label>
+    <div class="t3"><select id="rqHour" aria-label="Hour"></select><select id="rqMin" aria-label="Minute"></select>
+      <select id="rqAp" aria-label="AM or PM"><option>PM</option><option>AM</option></select></div>
+    <div class="row">
+      <div><label for="rqTotal">Total calls</label><input id="rqTotal" type="number" min="0" inputmode="numeric" placeholder="0"></div>
+      <div><label for="rqConnect">Connect calls</label><input id="rqConnect" type="number" min="0" inputmode="numeric" placeholder="0"></div>
+    </div>
+    <label for="rqLead">Lead of the day</label><input id="rqLead" placeholder="e.g. 2">
+    <div class="row">
+      <div><label for="rqVisitToday">Site visit done</label><input id="rqVisitToday" placeholder="e.g. 1"></div>
+      <div><label for="rqVisitTom">Tomorrow site visit</label><input id="rqVisitTom" placeholder="e.g. 2"></div>
+    </div>
+    <div class="row">
+      <div><label for="rqBooking">Booking</label><input id="rqBooking" type="number" min="0" inputmode="numeric" placeholder="e.g. 0"></div>
+      <div><label for="rqWtd">Site visit confirmed WTD</label><input id="rqWtd" placeholder="e.g. 4"></div>
+    </div>
+    <label for="rqReason">Why was the logout missed?</label>
+    <textarea id="rqReason" style="min-height:70px" placeholder="e.g. Phone battery was dead"></textarea>
+    <button type="button" class="wa" id="rqSend">Send request to admin</button>
+    <button type="button" class="ghost" data-close="reqModal">Cancel</button>
+    <div class="err" id="rqErr"></div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="decModal">
+  <div class="modal">
+    <h2 id="dcTitle">Missed logout request</h2>
+    <div class="preview" id="dcInfo" style="margin-top:6px"></div>
+    <label for="dcNote">Note to the caller (optional)</label>
+    <input id="dcNote" placeholder="e.g. Approved, please log out on time">
+    <button type="button" id="dcApprove">✓ Approve and add Logout</button>
+    <button type="button" class="ghost" id="dcReject" style="color:var(--err) !important;border-color:var(--bad-line) !important">✕ Reject</button>
+    <button type="button" class="ghost" data-close="decModal">Close</button>
+    <div class="err" id="dcErr"></div>
   </div>
 </div>
 
@@ -710,7 +776,9 @@ function refresh(){
   const past = $("remindPast");
   past.classList.toggle("hidden", !S.missed.length);
   if (S.missed.length) past.innerHTML = "<b>⚠️ Logout missed</b>You did not post your Logout on " +
-    S.missed.map(msgDate).join(", ") + ". Please inform your SM.";
+    S.missed.map(msgDate).join(", ") + ". Please inform your SM." +
+    (canRequest().length ? '<button type="button" class="wa" onclick="openRequest()">Request missed logout</button>' : "");
+  renderRequests();
 
   updatePreview();
   renderHistory();
@@ -827,6 +895,51 @@ function renderHistory(){
 }
 setInterval(() => { if (S && !$("callerView").classList.contains("hidden")) refresh(); }, 30000);
 
+/* ---- caller: missed logout requests ---- */
+fill($("rqHour"), Array.from({length:12}, (_, i) => String(i+1)), "", "Hour");
+fill($("rqMin"),  Array.from({length:60}, (_, i) => pad(i)), "", "Min");
+const RQ_IDS = ["rqTotal","rqConnect","rqLead","rqVisitToday","rqVisitTom","rqBooking","rqWtd","rqReason"];
+function canRequest(){ return (S && S.requestable || []).filter(d => !d.pending); }
+const reqCls = { "Pending":"warn", "Approved":"done", "Rejected":"bad" };
+function renderRequests(){
+  if (!S) return;
+  const can = canRequest();
+  $("reqOpen").classList.toggle("hidden", !can.length);
+  const list = S.requests || [];
+  $("reqSection").classList.toggle("hidden", !can.length && !list.length);
+  $("reqList").innerHTML = list.map(r => "<li>" + msgDate(r.date) + " · Logout " + esc(r.logout) + ' · <span class="pill ' + (reqCls[r.status]||"") + '">' + esc(r.status) + "</span>" +
+    (r.note ? " · " + esc(r.note) : "") + "</li>").join("") || "<li>No requests yet.</li>";
+}
+function openRequest(){
+  const can = canRequest();
+  if (!can.length){ popup("Nothing to request", "You have no missed logouts in the last 30 days, or a request is already waiting."); return; }
+  $("rqDate").innerHTML = can.map(d => '<option value="'+d.date+'">'+msgDate(d.date)+" (login "+esc(d.login)+")</option>").join("");
+  $("rqHour").value = ""; $("rqMin").value = ""; $("rqAp").value = "PM";
+  RQ_IDS.forEach(id => $(id).value = "");
+  $("rqErr").textContent = "";
+  $("reqModal").classList.remove("hidden");
+}
+$("reqOpen").onclick = openRequest;
+$("rqSend").onclick = async () => {
+  $("rqErr").textContent = "";
+  const names = { rqTotal:"Total calls", rqConnect:"Connect calls", rqLead:"Lead of the day", rqVisitToday:"Site visit done",
+    rqVisitTom:"Tomorrow site visit", rqBooking:"Booking", rqWtd:"Site visit confirmed WTD", rqReason:"Reason" };
+  if (!$("rqHour").value || !$("rqMin").value){ $("rqErr").textContent = "Please choose the logout time."; return; }
+  const empty = RQ_IDS.filter(id => !v(id)).map(id => names[id]);
+  if (empty.length){ $("rqErr").textContent = "Please fill: " + empty.join(", ") + " (put 0 if none)."; return; }
+  if (Number(v("rqConnect")) > Number(v("rqTotal"))){ $("rqErr").textContent = "Connect calls cannot be more than Total calls."; return; }
+  busy(true);
+  try{
+    const res = await call("requestLogout", { data: { date: $("rqDate").value, hour: $("rqHour").value, min: $("rqMin").value, ap: $("rqAp").value,
+      total: v("rqTotal"), connect: v("rqConnect"), lead: v("rqLead"), visitToday: v("rqVisitToday"), visitTom: v("rqVisitTom"),
+      booking: v("rqBooking"), wtd: v("rqWtd"), reason: v("rqReason") } });
+    S = res.state; refresh();
+    $("reqModal").classList.add("hidden");
+    popup("Request sent", "Your admin will check it. You will see Approved or Rejected here.", "📨");
+  }catch(err){ if (err.message !== "SESSION_EXPIRED") $("rqErr").textContent = err.message; }
+  busy(false);
+};
+
 /* =====================================================
    ADMIN
    ===================================================== */
@@ -844,7 +957,8 @@ async function loadAdmin(){
 }
 document.querySelectorAll("[data-atab]").forEach(b => b.onclick = () => {
   document.querySelectorAll("[data-atab]").forEach(x => x.classList.toggle("on", x === b));
-  ["report","reports","callers","lists","transfers"].forEach(n => $("a_" + n).classList.toggle("hidden", n !== b.dataset.atab));
+  ["report","reports","callers","lists","requests","transfers"].forEach(n => $("a_" + n).classList.toggle("hidden", n !== b.dataset.atab));
+  if (b.dataset.atab === "requests") loadRequests();
   if (b.dataset.atab === "report") loadReport();
   if (b.dataset.atab === "reports" && !PR) setRange("month");
 });
@@ -863,6 +977,7 @@ function renderAdmin(){
   $("tBody").innerHTML = A.transfers.length ? A.transfers.map(t =>
     "<tr><td>"+esc(t.changedOn)+"</td><td>"+esc(t.name)+"</td><td>"+esc(t.from||"—")+"</td><td>"+esc(t.to)+"</td><td>"+esc(niceDate(t.effective))+"</td><td>"+esc(t.by)+"</td></tr>"
   ).join("") : '<tr><td colspan="6" style="color:var(--muted)">No branch changes yet.</td></tr>';
+  setReqBadge(A.pendingRequests || 0);
 }
 
 /* ---- attendance report ---- */
@@ -912,6 +1027,50 @@ $("rRemind").onclick = () => {
   a.target = "_blank"; a.rel = "noopener";
   document.body.appendChild(a); a.click(); a.remove();
 };
+
+/* ---- missed logout requests ---- */
+let RQ = null, curReq = null;
+function setReqBadge(n){ $("reqBadge").textContent = n; $("reqBadge").classList.toggle("hidden", !n); }
+async function loadRequests(){
+  busy(true);
+  try{ RQ = await call("adminRequests"); renderRequestsAdmin(); }
+  catch(e){ if (e.message !== "SESSION_EXPIRED") popup("Error", e.message); }
+  busy(false);
+}
+function renderRequestsAdmin(){
+  setReqBadge(RQ.pending.length);
+  $("qPending").innerHTML = RQ.pending.map(r => "<tr><td>"+esc(r.requestedOn)+"</td><td>"+esc(r.name)+"</td><td>"+esc(r.branch)+"</td><td>"+msgDate(r.date)+
+    "</td><td>"+esc(r.login)+"</td><td><b>"+esc(r.logout)+'</b></td><td class="num">'+esc(r.total)+" ("+esc(r.connect)+')</td><td class="num">'+esc(r.booking)+
+    '</td><td style="white-space:normal;min-width:160px">'+esc(r.reason)+'</td><td><button class="small" data-review="'+esc(r.id)+'">Review</button></td></tr>').join("") ||
+    '<tr><td colspan="10" style="color:var(--muted)">No requests waiting.</td></tr>';
+  $("qDone").innerHTML = RQ.decided.map(r => "<tr><td>"+msgDate(r.date)+"</td><td>"+esc(r.name)+"</td><td>"+esc(r.logout)+'</td><td><span class="pill '+(reqCls[r.status]||"")+'">'+esc(r.status)+
+    "</span></td><td>"+esc(r.decidedOn)+"</td><td>"+esc(r.decidedBy)+"</td><td>"+(esc(r.note)||"—")+"</td></tr>").join("") ||
+    '<tr><td colspan="7" style="color:var(--muted)">Nothing decided yet.</td></tr>';
+  document.querySelectorAll("[data-review]").forEach(b => b.onclick = () => openDecision(b.dataset.review));
+}
+function openDecision(id){
+  curReq = RQ.pending.find(r => r.id === id); if (!curReq) return;
+  const r = curReq;
+  $("dcTitle").textContent = r.name + " – " + msgDate(r.date);
+  $("dcInfo").textContent = "Branch: " + r.branch + "\nLogin: " + r.login + "\nLogout asked: " + r.logout +
+    "\nTotal calls: " + r.total + "   Connect: " + r.connect + "\nLead: " + r.lead + "   Site visit done: " + r.visitToday +
+    "\nTomorrow site visit: " + r.visitTom + "   Booking: " + r.booking + "\nSite visit confirmed WTD: " + r.wtd +
+    "\n\nReason: " + r.reason + "\nRequested on: " + r.requestedOn;
+  $("dcNote").value = ""; $("dcErr").textContent = "";
+  $("decModal").classList.remove("hidden");
+}
+async function decide(approve){
+  if (!curReq) return;
+  busy(true);
+  try{
+    RQ = await call("decideRequest", { id: curReq.id, approve, note: v("dcNote") });
+    renderRequestsAdmin(); $("decModal").classList.add("hidden");
+    toast(approve ? "Approved – Logout added to attendance" : "Request rejected");
+  }catch(e){ if (e.message !== "SESSION_EXPIRED") $("dcErr").textContent = e.message; }
+  busy(false);
+}
+$("dcApprove").onclick = () => decide(true);
+$("dcReject").onclick = () => decide(false);
 
 /* ---- period reports ---- */
 let PR = null;

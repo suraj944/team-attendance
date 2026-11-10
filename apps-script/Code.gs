@@ -14,6 +14,7 @@
  *  Employee Summary  – auto-calculated monthly report per employee (pick the month in B1)
  *  Branch Summary    – auto-calculated monthly report per branch (pick the month in B1)
  *  Branch Transfers  – history of every branch change
+ *  Logout Requests   – callers' requests to add a missed logout (admin approves or rejects)
  *  Branches / SMs / Locations – dropdown lists used by the website
  *  Settings          – reminder time, late time, weekly off
  */
@@ -32,6 +33,9 @@ const COLS = {
                  'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Booking', 'Site Visit Confirmed WTD', 'Status',
                  'Login Posted At', 'Logout Posted At', 'Admin Note', 'Login Message', 'Logout Message'],
   'Branch Transfers': ['Changed On', 'Employee ID', 'Employee Name', 'From Branch', 'To Branch', 'Effective Date', 'Changed By'],
+  'Logout Requests': ['Request ID', 'Requested On', 'Employee ID', 'Employee Name', 'Branch', 'Date', 'Login Time', 'Logout Time',
+                      'Total Calls', 'Connect Calls', 'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Booking',
+                      'Site Visit Confirmed WTD', 'Reason', 'Status', 'Decided On', 'Decided By', 'Admin Note'],
   'Branches': ['Branch'],
   'SMs': ['SM Name'],
   'Locations': ['Location'],
@@ -167,7 +171,7 @@ function buildSummaries_(ss) {
 /* ================= Look & feel of the sheets ================= */
 function format_(ss) {
   const GREEN = '#128c7e';
-  const order = ['Employees', 'Attendance', 'Employee Summary', 'Branch Summary', 'Branch Transfers', 'Branches', 'SMs', 'Locations', 'Settings'];
+  const order = ['Employees', 'Attendance', 'Logout Requests', 'Employee Summary', 'Branch Summary', 'Branch Transfers', 'Branches', 'SMs', 'Locations', 'Settings'];
   order.forEach(function (n, i) {
     const s = ss.getSheetByName(n); if (!s) return;
     ss.setActiveSheet(s); ss.moveActiveSheet(i + 1);
@@ -175,7 +179,7 @@ function format_(ss) {
     const hr = n === 'Employee Summary' ? 5 : n === 'Branch Summary' ? 3 : 1;
     s.getRange(hr, 1, 1, lastCol).setBackground(GREEN).setFontColor('#ffffff').setFontWeight('bold').setWrap(true).setVerticalAlignment('middle');
     s.setRowHeight(hr, 34);
-    s.setTabColor(i < 2 ? GREEN : i < 4 ? '#f0b45a' : '#9aa5a0');
+    s.setTabColor(i < 3 ? GREEN : i < 5 ? '#f0b45a' : '#9aa5a0');
   });
   // Employees
   let s = ss.getSheetByName('Employees');
@@ -205,6 +209,15 @@ function format_(ss) {
     .forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
   s.hideColumns(25, 2);                                       // full WhatsApp messages – kept for records
   s.getRange('X1').setNote('Admin can write a note here, e.g. "Logout missed – phone battery dead".');
+  // Logout requests
+  s = ss.getSheetByName('Logout Requests');
+  s.getRange('F2:F').setNumberFormat('dd-mmm-yyyy');
+  s.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Pending').setBackground('#fff4e0').setFontColor('#7a4a00').setRanges([s.getRange('Q2:Q')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Approved').setBackground('#e7f6ef').setFontColor('#0b6b45').setRanges([s.getRange('Q2:Q')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Rejected').setBackground('#fdecea').setFontColor('#8a1f14').setRanges([s.getRange('Q2:Q')]).build(),
+  ]);
+  [150, 120, 150, 150, 180, 100, 80, 85, 70, 75, 70, 75, 75, 65, 85, 220, 85, 120, 100, 200].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
   // Transfers
   s = ss.getSheetByName('Branch Transfers');
   s.getRange('F2:F').setNumberFormat('dd-mmm-yyyy');
@@ -457,6 +470,44 @@ function buildMessage_(type, dateKey, name, d) {
   ].join('\n');
 }
 
+// Validate the logout numbers sent by a caller
+function logoutFields_(d) {
+  const rec = {};
+  ['total', 'connect', 'lead', 'visitToday', 'visitTom', 'booking', 'wtd'].forEach(function (k) {
+    rec[k] = String(d[k] === undefined ? '' : d[k]).trim();
+    if (!rec[k]) throw new Error('Please fill all logout fields (put 0 if none).');
+  });
+  if (Number(rec.connect) > Number(rec.total)) throw new Error('Connect calls cannot be more than Total calls.');
+  return rec;
+}
+// Write a logout into the caller's Attendance row for that day
+function writeLogout_(loginRec, rec, dateKey, name, postedAt, note) {
+  const row = loginRec.raw;
+  const lm = parse12_(loginRec.time), om = parse12_(rec.time), tot = Number(rec.total), con = Number(rec.connect);
+  const message = buildMessage_('logout', dateKey, name, Object.assign({ sm: loginRec.sm }, rec));
+  const upd = {
+    'Logout Time': rec.time,
+    'Hours Worked': om > lm ? Math.floor((om - lm) / 60) + 'h ' + ((om - lm) % 60) + 'm' : '',
+    'Total Calls': rec.total, 'Connect Calls': rec.connect, 'Connect %': tot ? Math.round(con * 1000 / tot) / 1000 : '',
+    'Lead of the Day': rec.lead, 'Site Visit Done': rec.visitToday, 'Tomorrow Site Visit': rec.visitTom,
+    'Site Visit Confirmed WTD': rec.wtd, 'Booking': rec.booking, 'Status': 'Complete', 'Logout Posted At': postedAt,
+    'Logout Message': message };
+  if (note) upd['Admin Note'] = (row['Admin Note'] ? row['Admin Note'] + ' | ' : '') + note;
+  updateObj_('Attendance', row._row, Object.assign({}, row, upd));
+  return message;
+}
+function requests_() {
+  if (!ss_().getSheetByName('Logout Requests')) return [];   // sheet is added by setup
+  return table_('Logout Requests').rows.map(function (o) {
+    return { id: o['Request ID'], requestedOn: o['Requested On'], username: String(o['Employee ID'] || '').toLowerCase(),
+             name: o['Employee Name'], branch: o['Branch'], date: o['Date'], login: o['Login Time'], logout: o['Logout Time'],
+             total: o['Total Calls'], connect: o['Connect Calls'], lead: o['Lead of the Day'], visitToday: o['Site Visit Done'],
+             visitTom: o['Tomorrow Site Visit'], booking: o['Booking'], wtd: o['Site Visit Confirmed WTD'], reason: o['Reason'],
+             status: o['Status'] || 'Pending', decidedOn: o['Decided On'], decidedBy: o['Decided By'], note: o['Admin Note'],
+             row: o._row, raw: o };
+  });
+}
+
 function callerState_(u) {
   const today = todayKey_();
   const mine = attendance_().filter(function (a) { return a.username === u.username; });
@@ -473,7 +524,20 @@ function callerState_(u) {
     }),
     config: { sms: list_('SMs'), locations: list_('Locations'), reminderAt: setting_('Logout reminder time', '19:00') },
     serverMinutes: nowMinutes_(),
+    requestable: requestableDays_(u, byDay, days, today),
+    requests: requests_().filter(function (r) { return r.username === u.username; }).slice(-10).reverse().map(function (r) {
+      return { id: r.id, date: r.date, logout: r.logout, status: r.status, note: r.note, requestedOn: r.requestedOn };
+    }),
   };
+}
+// Days in the last 30 days with a login but no logout (and the day is over), that a caller may ask the admin to fill
+function requestableDays_(u, byDay, days, today) {
+  const since = addDays_(today, -30);
+  const pending = {};
+  requests_().forEach(function (r) { if (r.username === u.username && r.status === 'Pending') pending[r.date] = true; });
+  return days.filter(function (d) {
+    return d >= since && byDay[d].login && !byDay[d].logout && (d < today || byDay[d].login.status === 'Logout missed');
+  }).map(function (d) { return { date: d, login: byDay[d].login.time, pending: !!pending[d] }; });
 }
 function stateFor_(u) { return u.role === 'admin' ? { user: publicUser_(u), isAdmin: true } : callerState_(u); }
 
@@ -526,15 +590,11 @@ const API = {
         if (!rec.loc) throw new Error('Please enter the location.');
       } else {
         if (!st.today.login) throw new Error('Please post your Login first.');
+        Object.assign(rec, logoutFields_(d));
         rec.time = fmt12_(nowMinutes_());           // logout time = server time, cannot be changed
         rec.sm = st.today.login.sm;                 // SM fixed from today's login
-        ['total', 'connect', 'lead', 'visitToday', 'visitTom', 'booking', 'wtd'].forEach(function (k) {
-          rec[k] = String(d[k] === undefined ? '' : d[k]).trim();
-          if (!rec[k]) throw new Error('Please fill all logout fields (put 0 if none).');
-        });
-        if (Number(rec.connect) > Number(rec.total)) throw new Error('Connect calls cannot be more than Total calls.');
       }
-      const message = buildMessage_(type, today, u.name, rec);
+      let message = type === 'login' ? buildMessage_(type, today, u.name, rec) : '';
       const posted = now_('dd-MM-yyyy HH:mm:ss');
       if (type === 'login') {
         const lp = setting_('Late after', '10:00').split(':');
@@ -543,14 +603,7 @@ const API = {
           'Login Time': rec.time, 'Late': parse12_(rec.time) > Number(lp[0]) * 60 + Number(lp[1] || 0) ? 'Yes' : 'No',
           'Status': 'Logout pending', 'Login Posted At': posted, 'Login Message': message });
       } else {
-        const row = st.today.login.raw;
-        const lm = parse12_(st.today.login.time), om = parse12_(rec.time), tot = Number(rec.total), con = Number(rec.connect);
-        updateObj_('Attendance', row._row, Object.assign({}, row, {
-          'Logout Time': rec.time,
-          'Hours Worked': om > lm ? Math.floor((om - lm) / 60) + 'h ' + ((om - lm) % 60) + 'm' : '',
-          'Total Calls': rec.total, 'Connect Calls': rec.connect, 'Connect %': tot ? Math.round(con * 1000 / tot) / 1000 : '',
-          'Lead of the Day': rec.lead, 'Site Visit Done': rec.visitToday, 'Tomorrow Site Visit': rec.visitTom,
-          'Site Visit Confirmed WTD': rec.wtd, 'Booking': rec.booking, 'Status': 'Complete', 'Logout Posted At': posted, 'Logout Message': message }));
+        message = writeLogout_(st.today.login, rec, today, u.name, posted, '');
       }
       return { message: message, state: callerState_(u) };
     } finally {
@@ -558,7 +611,74 @@ const API = {
     }
   },
 
+  /* Caller asks the admin to add a logout they forgot */
+  requestLogout: function (p) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      const u = auth_(p.token);
+      if (u.role === 'admin') throw new Error('Admin account cannot send requests.');
+      const d = p.data || {}, date = normDate_(d.date);
+      const st = callerState_(u);
+      const day = st.requestable.filter(function (x) { return x.date === date; })[0];
+      if (!day) throw new Error('You can request only for a day with a Login and no Logout (last 30 days).');
+      if (day.pending) throw new Error('A request for ' + msgDate_(date) + ' is already waiting for the admin.');
+      const h = Number(d.hour), m = Number(d.min);
+      if (!(h >= 1 && h <= 12) || !(m >= 0 && m <= 59) || (d.ap !== 'AM' && d.ap !== 'PM')) throw new Error('Please choose the logout time.');
+      const mins = (h % 12 + (d.ap === 'PM' ? 12 : 0)) * 60 + m;
+      if (mins <= parse12_(day.login)) throw new Error('Logout time must be after your login time (' + day.login + ').');
+      const rec = logoutFields_(d);
+      const reason = String(d.reason || '').trim();
+      if (reason.length < 3) throw new Error('Please write the reason (why the logout was missed).');
+      appendObj_('Logout Requests', {
+        'Request ID': 'R' + now_('yyyyMMddHHmmss') + Math.floor(Math.random() * 900 + 100),
+        'Requested On': now_('dd-MM-yyyy HH:mm'), 'Employee ID': u.username, 'Employee Name': u.name, 'Branch': u.branch,
+        'Date': date, 'Login Time': day.login, 'Logout Time': fmt12_(mins), 'Total Calls': rec.total, 'Connect Calls': rec.connect,
+        'Lead of the Day': rec.lead, 'Site Visit Done': rec.visitToday, 'Tomorrow Site Visit': rec.visitTom, 'Booking': rec.booking,
+        'Site Visit Confirmed WTD': rec.wtd, 'Reason': reason, 'Status': 'Pending' });
+      return { state: callerState_(u) };
+    } finally {
+      lock.releaseLock();
+    }
+  },
+
   /* ---------- Admin ---------- */
+  adminRequests: function (p) {
+    auth_(p.token, true);
+    const all = requests_();
+    const pend = all.filter(function (r) { return r.status === 'Pending'; });
+    const done = all.filter(function (r) { return r.status !== 'Pending'; }).slice(-50).reverse();
+    const strip = function (r) { const o = Object.assign({}, r); delete o.raw; delete o.row; return o; };
+    return { pending: pend.map(strip), decided: done.map(strip) };
+  },
+
+  decideRequest: function (p) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      const admin = auth_(p.token, true);
+      const r = requests_().filter(function (x) { return x.id === p.id; })[0];
+      if (!r) throw new Error('Request not found.');
+      if (r.status !== 'Pending') throw new Error('This request was already ' + r.status.toLowerCase() + '.');
+      const note = String(p.note || '').trim();
+      const decided = now_('dd-MM-yyyy HH:mm');
+      if (p.approve) {
+        const login = attendance_().filter(function (a) { return a.username === r.username && a.date === r.date && a.type === 'login'; })[0];
+        const logout = attendance_().filter(function (a) { return a.username === r.username && a.date === r.date && a.type === 'logout'; })[0];
+        if (!login) throw new Error('No Login found for ' + r.name + ' on ' + msgDate_(r.date) + '.');
+        if (logout) throw new Error(r.name + ' already has a Logout on ' + msgDate_(r.date) + '. Reject this request.');
+        writeLogout_(login, { time: r.logout, total: r.total, connect: r.connect, lead: r.lead, visitToday: r.visitToday,
+          visitTom: r.visitTom, booking: r.booking, wtd: r.wtd }, r.date, r.name, 'Added from request ' + decided,
+          'Logout added from request (' + r.reason + '), approved by ' + admin.name + ' on ' + decided);
+      }
+      updateObj_('Logout Requests', r.row, Object.assign({}, r.raw, { 'Status': p.approve ? 'Approved' : 'Rejected',
+        'Decided On': decided, 'Decided By': admin.name, 'Admin Note': note }));
+      return API.adminRequests(p);
+    } finally {
+      lock.releaseLock();
+    }
+  },
+
   adminData: function (p) {
     auth_(p.token, true);
     return {
@@ -573,6 +693,7 @@ const API = {
       }),
       today: todayKey_(),
       appUrl: appUrl_(),
+      pendingRequests: requests_().filter(function (r) { return r.status === 'Pending'; }).length,
     };
   },
 

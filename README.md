@@ -12,6 +12,7 @@ A daily Login / Logout website for calling teams. Callers sign in, post their Lo
 - Confirmation step ("This cannot be changed later") before posting
 - WhatsApp opens with the message ready, so the caller chooses the group
 - "Kindly post the logout" reminder after the reminder time, and a warning for missed logouts on earlier days
+- Missed logout request: the caller picks the missed day, enters the logout time, the day's numbers and a reason; the admin approves (the logout is added to Attendance) or rejects it
 
 **Admin**
 - Today: who logged in, logged out or is pending, with a button that sends a logout reminder to a WhatsApp group
@@ -40,6 +41,7 @@ A daily Login / Logout website for calling teams. Callers sign in, post their Lo
 | Employee Summary | Monthly figures per employee, calculated by formulas. Change the month in B1 |
 | Branch Summary | Monthly figures per branch, calculated by formulas. Change the month in B1 |
 | Branch Transfers | History of branch changes |
+| Logout Requests | Callers' requests to add a missed logout, with status Pending / Approved / Rejected |
 | Branches, SMs, Locations | Dropdown lists used by the website |
 | Settings | Logout reminder time, late-after time, weekly off |
 
