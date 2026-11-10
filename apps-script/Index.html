@@ -118,6 +118,7 @@
   .seg{display:grid;grid-template-columns:1fr 1fr;background:#eef2f0;border-radius:12px;padding:4px;gap:4px;margin-bottom:6px}
   .seg.five{grid-template-columns:repeat(5,1fr)}
   .seg.six{grid-template-columns:repeat(6,1fr)}
+  .seg.seven{grid-template-columns:repeat(7,1fr)}
   table.reg{font-size:12px}
   table.reg th,table.reg td{padding:6px 4px;text-align:center;white-space:nowrap}
   table.reg td.nm,table.reg th.nm{text-align:left;padding-left:10px;position:sticky;left:0;background:#fff;z-index:1}
@@ -189,7 +190,7 @@
   .stat b{display:block;font-size:22px}
   .stat span{font-size:12px;color:var(--muted)}
   .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-  @media (max-width:700px){ .grid3{grid-template-columns:1fr} .seg.five,.seg.six{grid-template-columns:1fr 1fr} .tops{grid-template-columns:1fr 1fr} }
+  @media (max-width:700px){ .grid3{grid-template-columns:1fr} .seg.five,.seg.six,.seg.seven{grid-template-columns:1fr 1fr} .tops{grid-template-columns:1fr 1fr} }
 
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
   .modal{background:#fff;border-radius:14px;max-width:400px;width:100%;padding:22px;max-height:92vh;overflow:auto}
@@ -343,9 +344,10 @@
     <button class="link" data-signout>Sign out</button>
   </div>
 
-  <div class="seg six">
+  <div class="seg seven">
     <button type="button" data-atab="report" class="on">Today</button>
     <button type="button" data-atab="reports">Reports</button>
+    <button type="button" data-atab="attendance">Attendance</button>
     <button type="button" data-atab="callers">Callers</button>
     <button type="button" data-atab="lists">Settings</button>
     <button type="button" data-atab="requests">Requests <span class="badge hidden" id="reqBadge" style="background:var(--err);color:#fff;margin-left:2px">0</span></button>
@@ -370,13 +372,6 @@
   <!-- Reports -->
   <section id="a_reports" class="hidden">
     <div class="toolbar">
-      <div><label for="pType">Report type</label><select id="pType">
-        <option value="summary">Summary (branches and callers)</option>
-        <option value="register">Monthly attendance register</option>
-        <option value="daily">Daily attendance</option>
-        <option value="late">Late and missed logout</option>
-        <option value="perf">Caller performance</option>
-      </select></div>
       <div><label for="pFrom">From</label><input id="pFrom" type="date"></div>
       <div><label for="pTo">To</label><input id="pTo" type="date"></div>
       <div><label for="pBranch">Branch</label><select id="pBranch"></select></div>
@@ -388,13 +383,6 @@
       <button type="button" data-range="7">Last 7 days</button>
       <button type="button" data-range="month">This month</button>
       <button type="button" data-range="lastmonth">Last month</button>
-    </div>
-    <div id="pAlt" class="hidden">
-      <div class="summary" id="aSummary"></div>
-      <p class="hint" id="aRules"></p>
-      <div class="sechead"><h2 id="aTitle"></h2><div class="tools" id="aTools"></div></div>
-      <div class="tablewrap"><table id="aTable"></table></div>
-      <div class="legend" id="aLegend"></div>
     </div>
     <div id="pOut" class="hidden">
       <div class="summary" id="pSummary"></div>
@@ -429,6 +417,36 @@
         <tbody id="pEmps"></tbody>
       </table></div>
       <p class="hint">Tap a caller to see their day-by-day attendance.</p>
+    </div>
+  </section>
+
+  <!-- Attendance reports -->
+  <section id="a_attendance" class="hidden">
+    <div class="toolbar">
+      <div><label for="atType">Attendance report</label><select id="atType">
+        <option value="register">Monthly attendance register</option>
+        <option value="daily">Daily attendance</option>
+        <option value="late">Late and missed logout</option>
+        <option value="perf">Caller performance</option>
+      </select></div>
+      <div><label for="atFrom">From</label><input id="atFrom" type="date"></div>
+      <div><label for="atTo">To</label><input id="atTo" type="date"></div>
+      <div><label for="atBranch">Branch</label><select id="atBranch"></select></div>
+      <button type="button" id="atLoad">Show report</button>
+      <button type="button" id="atExcel" class="wa">⬇ Download Excel</button>
+    </div>
+    <div class="quick">
+      <button type="button" data-arange="today">Today</button>
+      <button type="button" data-arange="7">Last 7 days</button>
+      <button type="button" data-arange="month">This month</button>
+      <button type="button" data-arange="lastmonth">Last month</button>
+    </div>
+    <div id="pAlt" class="hidden">
+      <div class="summary" id="aSummary"></div>
+      <p class="hint" id="aRules"></p>
+      <div class="sechead"><h2 id="aTitle"></h2><div class="tools" id="aTools"></div></div>
+      <div class="tablewrap"><table id="aTable"></table></div>
+      <div class="legend" id="aLegend"></div>
     </div>
   </section>
 
@@ -980,16 +998,18 @@ async function loadAdmin(){
 }
 document.querySelectorAll("[data-atab]").forEach(b => b.onclick = () => {
   document.querySelectorAll("[data-atab]").forEach(x => x.classList.toggle("on", x === b));
-  ["report","reports","callers","lists","requests","transfers"].forEach(n => $("a_" + n).classList.toggle("hidden", n !== b.dataset.atab));
+  ["report","reports","attendance","callers","lists","requests","transfers"].forEach(n => $("a_" + n).classList.toggle("hidden", n !== b.dataset.atab));
   if (b.dataset.atab === "requests") loadRequests();
   if (b.dataset.atab === "report") loadReport();
   if (b.dataset.atab === "reports" && !PR) setRange("month");
+  if (b.dataset.atab === "attendance" && !AR) setARange("month");
 });
 
 function renderAdmin(){
   fill($("rBranch"), A.branches, $("rBranch").value, "All branches");
   fill($("cBranch"), A.branches, $("cBranch").value, "All branches");
   fill($("pBranch"), A.branches, $("pBranch").value, "All branches");
+  fill($("atBranch"), A.branches, $("atBranch").value, "All branches");
   renderCallers();
   $("lBranches").value = A.branches.join("\n");
   $("lSms").value = A.sms.join("\n");
@@ -1110,7 +1130,7 @@ function setRange(r){
 document.querySelectorAll("[data-range]").forEach(b => b.onclick = () => setRange(b.dataset.range));
 $("pLoad").onclick = loadPeriod;
 $("pBranch").onchange = renderPeriod;
-$("pType").onchange = () => { if (PR) renderPeriod(); else loadPeriod(); };
+
 $("pSort").onchange = renderPeriod;
 $("pSearch").oninput = renderPeriod;
 async function loadPeriod(){
@@ -1124,10 +1144,7 @@ const bar = x => x == null ? "" : '<span class="bar"><i class="'+(x < 75 ? "low"
 const n0 = x => x ? Number(x).toLocaleString("en-IN") : "0";
 function renderPeriod(){
   if (!PR) return;
-  const type = $("pType").value;
-  $("pAlt").classList.toggle("hidden", type === "summary");
-  $("pOut").classList.toggle("hidden", type !== "summary");
-  if (type !== "summary"){ renderAlt(type); return; }
+  $("pOut").classList.remove("hidden");
   const b = $("pBranch").value;
   const emps = PR.employees.filter(e => !b || e.branch === b);
   const brs = PR.branches.filter(x => !b || x.branch === b);
@@ -1170,16 +1187,43 @@ function renderPeriod(){
     '<tr><td colspan="13" style="color:var(--muted)">No callers for this filter.</td></tr>';
   document.querySelectorAll("[data-emp]").forEach(r => r.onclick = () => openEmp(r.dataset.emp));
 }
-/* ---- extra report types (built from the same period data) ---- */
+/* ---- Attendance tab (separate attendance reports) ---- */
+let AR = null;
+function setARange(r){
+  const t = A.today, [y, m] = t.split("-").map(Number);
+  let from = t, to = t;
+  if (r === "7"){ const d = new Date(y, m-1, Number(t.slice(8))); d.setDate(d.getDate()-6); from = keyOf(d); }
+  if (r === "month") from = t.slice(0, 8) + "01";
+  if (r === "lastmonth"){ from = keyOf(new Date(y, m-2, 1)); to = keyOf(new Date(y, m-1, 0)); }
+  $("atFrom").value = from; $("atTo").value = to;
+  loadAttendance();
+}
+async function loadAttendance(){
+  busy(true);
+  try{ AR = await call("periodReport", { from: $("atFrom").value, to: $("atTo").value }); aDay = AR.to; renderAttendance(); }
+  catch(e){ if (e.message !== "SESSION_EXPIRED") popup("Attendance report", e.message); }
+  busy(false);
+}
+function renderAttendance(){ if (!AR) return; $("pAlt").classList.remove("hidden"); renderAlt($("atType").value); }
+document.querySelectorAll("[data-arange]").forEach(b => b.onclick = () => setARange(b.dataset.arange));
+$("atLoad").onclick = loadAttendance;
+$("atType").onchange = renderAttendance;
+$("atBranch").onchange = renderAttendance;
+$("atExcel").onclick = async () => {
+  if (!AR){ popup("No report yet", "Choose the dates and press Show report first."); return; }
+  busy(true);
+  try{ await altExcel($("atType").value); toast("Excel report downloaded"); }catch(e){ popup("Download failed", e.message); }
+  busy(false);
+};
 const REG_CODE = { "Present":"P", "Working":"P", "Late":"L", "Logout missed":"M", "Absent":"A", "Weekly off":"WO" };
 let aDay = "";
-function periodDays(){ const out = []; for (let d = PR.from; d <= PR.to; ){ out.push(d); const t = new Date(d + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + 1); d = t.toISOString().slice(0, 10); } return out; }
+function periodDays(){ const out = []; for (let d = AR.from; d <= AR.to; ){ out.push(d); const t = new Date(d + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + 1); d = t.toISOString().slice(0, 10); } return out; }
 function altEmps(){
-  const b = $("pBranch").value;
-  return PR.employees.filter(e => !b || e.branch === b).slice().sort((a, c) => a.branch.localeCompare(c.branch) || a.name.localeCompare(c.name));
+  const b = $("atBranch").value;
+  return AR.employees.filter(e => !b || e.branch === b).slice().sort((a, c) => a.branch.localeCompare(c.branch) || a.name.localeCompare(c.name));
 }
 function mins12(t){ const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(String(t||"").trim()); if (!m) return null; let h = Number(m[1]) % 12; if (/pm/i.test(m[3])) h += 12; return h * 60 + Number(m[2]); }
-function isLateDay(d){ const lp = String(PR.lateAfter||"10:00").split(":"), lm = mins12(d.login); return lm !== null && lm > Number(lp[0]) * 60 + Number(lp[1]); }
+function isLateDay(d){ const lp = String(AR.lateAfter||"10:00").split(":"), lm = mins12(d.login); return lm !== null && lm > Number(lp[0]) * 60 + Number(lp[1]); }
 const dayMap = e => { const m = {}; e.daily.forEach(d => m[d.date] = d); return m; };
 const stats = a => a.map(s => '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>').join("");
 function altData(type){
@@ -1195,7 +1239,7 @@ function altData(type){
       summary: [["Callers", emps.length], ["Present days", sum("present")], ["Late", sum("late")], ["Logout missed", sum("missed")], ["Absent days", sum("absent")]] };
   }
   if (type === "daily"){
-    if (!aDay || aDay < PR.from || aDay > PR.to) aDay = PR.to;
+    if (!aDay || aDay < AR.from || aDay > AR.to) aDay = AR.to;
     const head = ["Caller", "Branch", "SM", "Login", "Logout", "Hours", "Calls", "Connect", "Bookings", "Status"];
     const rows = emps.map(e => { const d = dayMap(e)[aDay]; return d ? { e, d, cells: [e.name, e.branch, d.sm, d.login, d.logout, d.hours, numOr(d.total), numOr(d.connect), numOr(d.booking), d.status] } : null; }).filter(Boolean);
     const c = st => rows.filter(r => st.includes(r.d.status)).length;
@@ -1229,8 +1273,8 @@ function DAYN(d){ return ["Su","Mo","Tu","We","Th","Fr","Sa"][new Date(d + "T00:
 function renderAlt(type){
   const D = altData(type);
   $("aSummary").innerHTML = stats(D.summary);
-  $("aRules").textContent = niceDate(PR.from) + " to " + niceDate(PR.to) + ($("pBranch").value ? " · " + $("pBranch").value : " · All branches") +
-    " · Late = login after " + PR.lateAfter + " · Weekly off: " + PR.weeklyOff;
+  $("aRules").textContent = niceDate(AR.from) + " to " + niceDate(AR.to) + ($("atBranch").value ? " · " + $("atBranch").value : " · All branches") +
+    " · Late = login after " + AR.lateAfter + " · Weekly off: " + AR.weeklyOff;
   $("aTitle").textContent = D.title;
   $("aTools").innerHTML = (type === "daily" ? '<select id="aDay">' + periodDays().reverse().map(d => '<option value="'+d+'"'+(d===aDay?" selected":"")+'>'+niceDate(d)+" ("+DAYN(d)+")</option>").join("") + "</select>" : "") +
     '<button type="button" class="small ghost" id="aCopy">Copy table</button>';
@@ -1251,24 +1295,24 @@ function renderAlt(type){
       return '<td class="'+(isNum(i)&&type!=="register"?"num":"")+'"'+(type==="late"&&(i===3||i===5)?' style="white-space:normal;min-width:140px"':"")+">" + val + "</td>";
     }).join("") + "</tr>").join("")
     : '<tr><td colspan="'+D.head.length+'" style="color:var(--muted)">'+(type==="late"?"No late logins or missed logouts in this period.":"No data for this filter.")+"</td></tr>") + "</tbody>";
-  t.querySelectorAll("[data-emp]").forEach(r => r.onclick = () => openEmp(r.dataset.emp));
+  t.querySelectorAll("[data-emp]").forEach(r => r.onclick = () => openEmp(r.dataset.emp, AR));
   $("aLegend").innerHTML = type === "register" ? [["P","Present"],["L","Late"],["M","Logout missed"],["A","Absent"],["WO","Weekly off"]].map(x => '<span><span class="rc '+x[0]+'">'+x[0]+"</span> "+x[1]+"</span>").join("") +
     '<span><span class="rc X">·</span> Not counted (before joining or start)</span><span>Tap a caller for day-by-day details.</span>' : '<span>Tap a caller for day-by-day details.</span>';
 }
 async function altExcel(type){
-  const XLSX = await loadXLSX(), D = altData(type), b = $("pBranch").value;
+  const XLSX = await loadXLSX(), D = altData(type), b = $("atBranch").value;
   const rows = [D.head, ...D.rows.map(r => r.cells.map(c => typeof c === "number" ? c : (c == null ? "" : String(c))))];
   const widths = D.head.map((h, i) => i === 0 ? 22 : i === 1 ? 24 : type === "register" && i < 2 + D.days.length ? 6 : type === "late" && (i === 3 || i === 5) ? 40 : Math.max(10, h.length + 2));
   const wb = XLSX.utils.book_new();
   const ws = sheetFrom(XLSX, rows, widths, D.pctCol != null ? [D.pctCol] : []);
   XLSX.utils.book_append_sheet(wb, ws, D.title.slice(0, 31).replace(/[\\\/\?\*\[\]:]/g, "-"));
   const label = { register:"Attendance_Register", daily:"Daily_Attendance", late:"Late_and_Missed_Logout", perf:"Caller_Performance" }[type];
-  const range = type === "daily" ? niceDate(aDay) : niceDate(PR.from) + "_to_" + niceDate(PR.to);
+  const range = type === "daily" ? niceDate(aDay) : niceDate(AR.from) + "_to_" + niceDate(AR.to);
   XLSX.writeFile(wb, label + "_" + range + (b ? "_" + b.replace(/[^A-Za-z0-9]+/g, "_") : "") + ".xlsx");
 }
 const statusCls = { "Present":"done", "Late":"warn", "Logout missed":"bad", "Absent":"bad", "Weekly off":"", "Working":"done", "Not logged in":"warn", "Before start":"" };
-function openEmp(username){
-  const e = PR.employees.find(x => x.username === username); if (!e) return;
+function openEmp(username, src){
+  const e = (src || PR).employees.find(x => x.username === username); if (!e) return;
   $("eName").textContent = e.name;
   $("eInfo").textContent = [e.branch, e.phone, e.joining ? "Joined " + niceDate(e.joining) : "", "Login ID: " + e.username].filter(Boolean).join(" · ");
   $("eStats").innerHTML = [["Present", e.present], ["Absent", e.absent], ["Attendance", pct(e.attPct)], ["Late", e.late],
@@ -1316,7 +1360,6 @@ $("pExcel").onclick = async () => {
   if (!PR){ popup("No report yet", "Choose the dates and press Show report first."); return; }
   busy(true);
   try{
-    if ($("pType").value !== "summary"){ await altExcel($("pType").value); toast("Excel report downloaded"); busy(false); return; }
     const XLSX = await loadXLSX();
     const b = $("pBranch").value;
     const emps = PR.employees.filter(e => !b || e.branch === b);
