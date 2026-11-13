@@ -413,12 +413,13 @@ function auth_(token, needAdmin) {
 }
 
 // Login ID = first name + last name + last 4 digits of phone, e.g. vivekjadhao3210
-function makeUsername_(name, digits) {
+function makeUsername_(name, digits, taken) {
   const parts = name.toLowerCase().split(' ').map(function (w) { return w.replace(/[^a-z]/g, ''); }).filter(String);
   let base = parts.length > 1 ? parts[0] + parts[parts.length - 1] : (parts[0] || 'caller');
   base = base.slice(0, 20) + (digits ? digits.slice(-4) : '');
   let u = base, n = 2;
-  while (findUser_(u)) u = base + (n++);
+  const used = taken ? function (x) { return !!taken[x]; } : function (x) { return !!findUser_(x); };
+  while (used(u)) u = base + (n++);
   return u;
 }
 // 6-character password without confusing letters (no 0/o, 1/l/i)
@@ -739,6 +740,102 @@ const API = {
       'Full Name': name, 'Phone': phone, 'Joining Date': x.joining || '', 'Role': role === 'admin' ? 'Admin' : 'Caller',
       'Status': active === 'no' ? 'Inactive' : 'Active' }));
     return API.adminData(p);
+  },
+
+  /* Add many callers in one go. Each row: { first, last, phone, branch, joining(yyyy-MM-dd) }.
+     Bad rows are skipped and reported; a branch that does not exist yet is added to the Branches list. */
+  bulkAddUsers: function (p) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      auth_(p.token, true);
+      const rows = (p.rows || []).slice(0, 300);
+      if (!rows.length) throw new Error('There are no rows to add.');
+      const taken = {}, phones = {};
+      users_().forEach(function (u) {
+        taken[u.username] = true;
+        const d = u.phone.replace(/\D/g, '').slice(-10);
+        if (d) phones[d] = u.name;
+      });
+      const branches = list_('Branches'), bmap = {};
+      branches.forEach(function (b) { bmap[b.toLowerCase()] = b; });
+      const head = headOf_('Employees'), stamp = now_('yyyy-MM-dd HH:mm');
+      const out = [], added = [], skipped = [], newBranches = [];
+      rows.forEach(function (r, i) {
+        const no = r.no || (i + 1);
+        const first = String(r.first || '').trim().replace(/\s+/g, ' ');
+        const last = String(r.last || '').trim().replace(/\s+/g, ' ');
+        const name = (first + ' ' + last).trim();
+        const branchIn = String(r.branch || '').trim();
+        const joining = String(r.joining || '').trim();
+        let phone = String(r.phone || '').replace(/\D/g, '');
+        if (phone.length === 12 && phone.indexOf('91') === 0) phone = phone.slice(2);
+        if (phone.length === 11 && phone[0] === '0') phone = phone.slice(1);
+        const bad = !first ? 'First name missing'
+          : !last ? 'Last name missing'
+          : !/^[6-9]\d{9}$/.test(phone) ? 'Phone is not a 10-digit mobile number'
+          : !branchIn ? 'Branch missing'
+          : (joining && !/^\d{4}-\d{2}-\d{2}$/.test(joining)) ? 'Joining date not understood'
+          : phones[phone] ? 'Phone already used by ' + phones[phone]
+          : '';
+        if (bad) { skipped.push({ no: no, name: name || ('Row ' + no), phone: phone, reason: bad }); return; }
+        let branch = bmap[branchIn.toLowerCase()];
+        if (!branch) { branch = branchIn; bmap[branch.toLowerCase()] = branch; newBranches.push(branch); }
+        const username = makeUsername_(name, phone, taken);
+        taken[username] = true;
+        phones[phone] = name;
+        const password = makePassword_();
+        out.push(rowArr_(head, { 'Employee ID': username, 'First Name': first, 'Last Name': last, 'Full Name': name,
+          'Phone': '+91 ' + phone, 'Branch': branch, 'Joining Date': joining, 'Role': 'Caller', 'Status': 'Active',
+          'Created On': stamp, 'Password Hash': hash_(username, password) }));
+        added.push({ no: no, name: name, username: username, password: password, phone: '+91 ' + phone,
+                     branch: branch, joining: joining });
+      });
+      if (out.length) {
+        const s = sheet_('Employees'), start = s.getLastRow() + 1;
+        s.getRange(start, 1, out.length, head.length).setValues(out);
+        head.forEach(function (h, i) {
+          if (DATE_COLS.indexOf(h) >= 0) s.getRange(start, i + 1, out.length, 1).setNumberFormat('dd-mmm-yyyy');
+        });
+      }
+      if (newBranches.length) replaceList_('Branches', branches.concat(newBranches));
+      const res = API.adminData(p);
+      res.bulk = { added: added, skipped: skipped, newBranches: newBranches };
+      return res;
+    } finally { lock.releaseLock(); }
+  },
+
+  /* Delete a caller. check:true only counts what would go, and deletes nothing. */
+  deleteUser: function (p) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      const admin = auth_(p.token, true);
+      const u = findUser_(p.username);
+      if (!u) throw new Error('This caller was not found. The list may already be updated.');
+      if (u.username === admin.username) throw new Error('You cannot delete the admin account you are signed in with.');
+      if (u.role === 'admin' && users_().filter(function (x) { return x.role === 'admin'; }).length < 2)
+        throw new Error('This is the only admin account. Add another admin first.');
+      const attRows = table_('Attendance').rows.filter(function (o) {
+        return String(o['Employee ID'] || '').trim().toLowerCase() === u.username;
+      }).map(function (o) { return o._row; });
+      const reqRows = table_('Logout Requests').rows.filter(function (o) {
+        return String(o['Employee ID'] || '').trim().toLowerCase() === u.username;
+      }).map(function (o) { return o._row; });
+      if (p.check) return { check: true, name: u.name, username: u.username, branch: u.branch,
+                            attendance: attRows.length, requests: reqRows.length };
+      const del = function (name, list) {
+        const s = sheet_(name);
+        list.sort(function (a, b) { return b - a; }).forEach(function (r) { s.deleteRow(r); });
+      };
+      if (p.withAttendance) del('Attendance', attRows);
+      del('Logout Requests', reqRows);
+      sheet_('Employees').deleteRow(u.row);
+      const out = API.adminData(p);
+      out.deleted = { name: u.name, username: u.username, attendance: p.withAttendance ? attRows.length : 0,
+                      kept: p.withAttendance ? 0 : attRows.length };
+      return out;
+    } finally { lock.releaseLock(); }
   },
 
   resetPassword: function (p) {

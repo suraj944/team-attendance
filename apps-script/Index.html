@@ -194,6 +194,22 @@
 
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
   .modal{background:#fff;border-radius:14px;max-width:400px;width:100%;padding:22px;max-height:92vh;overflow:auto}
+  .modal.big{max-width:760px}
+  .modal.big h2,.modal.big p{text-align:left}
+  button.danger{background:var(--err);color:#fff}
+  button.ghost.danger{background:#fff;color:var(--err);border:1px solid var(--err)}
+  .chk{display:flex;gap:9px;align-items:flex-start;font-size:14px;margin:12px 0;text-align:left}
+  .chk input{width:18px;height:18px;margin:1px 0 0;flex:none}
+  .bkrow td{font-size:13px}
+  .bkrow.bad td{background:#fdeeee;color:#7a2a24}
+  .bkrow.bad td:last-child{font-weight:600}
+  .bkrow.ok td:last-child{color:var(--ok-ink)}
+  .bkscroll{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:12px}
+  .bkscroll table{margin:0}
+  .bkscroll td{white-space:normal}
+  .bkscroll td:last-child{min-width:150px}
+  .bkscroll th{position:sticky;top:0;background:#f7f9f8;z-index:1}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
   .modal .icon{font-size:34px;line-height:1;text-align:center}
   .modal h2{font-size:18px;margin:10px 0 6px;text-align:center}
   .modal p{font-size:14px;color:var(--muted);margin:0;text-align:center}
@@ -456,6 +472,7 @@
       <div><label for="cSearch">Search</label><input id="cSearch" placeholder="Name, phone or Login ID"></div>
       <div><label for="cBranch">Branch</label><select id="cBranch"></select></div>
       <button type="button" id="cAdd">+ Add caller</button>
+      <button type="button" id="cBulk" class="ghost">⬆ Upload list</button>
     </div>
     <div class="tablewrap"><table>
       <thead><tr><th>Name</th><th>Phone</th><th>Login ID</th><th>Branch</th><th>Joining date</th><th>Role</th><th>Status</th><th></th></tr></thead>
@@ -559,8 +576,61 @@
       </div>
       <button type="submit">Save</button>
       <button type="button" class="ghost" data-close="userModal">Cancel</button>
+      <button type="button" class="ghost danger hidden" id="uDelete">Delete this caller</button>
       <div class="err" id="uErr"></div>
     </form>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="bulkModal">
+  <div class="modal big">
+    <h2>Upload a list of callers</h2>
+
+    <div id="bkStep1">
+      <p>Four columns in this order: <b>Name, Phone, Branch, Joining date</b>. A heading row is fine. Copy the rows from Excel and paste them below, or choose the file.</p>
+      <div class="row" style="margin-top:12px">
+        <div><label for="bkFile">Excel or CSV file</label><input type="file" id="bkFile" accept=".xlsx,.xls,.csv"></div>
+        <div><label>Not sure of the format?</label><button type="button" class="ghost" id="bkSample">Download a sample file</button></div>
+      </div>
+      <label for="bkText">…or paste the rows here</label>
+      <textarea id="bkText" rows="7" placeholder="Name&#9;Phone&#9;Branch&#9;Joining date&#10;Vivek Jadhao&#9;9876543210&#9;Elements Callers&#9;01-04-2026"></textarea>
+      <button type="button" id="bkCheck">Check the list</button>
+      <button type="button" class="ghost" data-close="bulkModal">Cancel</button>
+      <div class="err" id="bkErr"></div>
+    </div>
+
+    <div id="bkStep2" class="hidden">
+      <div class="summary" id="bkStats"></div>
+      <div class="alert warn hidden" id="bkNewBr" style="font-size:13px"></div>
+      <div class="bkscroll"><table id="bkTable"></table></div>
+      <p class="hint" style="text-align:left;margin-top:10px">Rows in red are skipped. Fix them in your file and upload those again later.</p>
+      <button type="button" id="bkAdd">Add the callers</button>
+      <button type="button" class="ghost" id="bkBack">Back</button>
+      <div class="err" id="bkErr2"></div>
+    </div>
+
+    <div id="bkStep3" class="hidden">
+      <div class="alert ok" style="font-size:13px"><b id="bkDoneHead">Callers added</b>Each password is shown only now. Download or copy the list before you close this. Later you can only reset a password.</div>
+      <div class="bkscroll"><table id="bkCreds"></table></div>
+      <div class="alert warn hidden" id="bkLeft" style="font-size:13px"></div>
+      <button type="button" id="bkXls">⬇ Download login details (Excel)</button>
+      <button type="button" class="ghost" id="bkCopyAll">Copy all login details</button>
+      <button type="button" class="ghost" id="bkClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="delModal">
+  <div class="modal">
+    <div class="icon">🗑️</div>
+    <h2>Delete caller</h2>
+    <p id="dlWho"></p>
+    <div class="alert warn" style="font-size:13px"><b>This cannot be undone.</b><span id="dlInfo"></span></div>
+    <label class="chk"><input type="checkbox" id="dlAtt"><span id="dlAttTxt"></span></label>
+    <p class="hint" style="text-align:left">To keep a caller's record but stop the login, use <b>Status: Inactive (left)</b> in Edit instead.</p>
+    <button type="button" id="dlGo" class="danger">Delete permanently</button>
+    <button type="button" class="ghost" data-close="delModal">Cancel</button>
+    <div class="err" id="dlErr"></div>
   </div>
 </div>
 
@@ -1457,6 +1527,7 @@ function openUser(username){
   $("uJoin").max = A.today;
   $("uRole").value = editing ? editing.role : "caller";
   $("uActive").value = editing ? editing.active : "yes";
+  $("uDelete").classList.toggle("hidden", !editing);
   $("uErr").textContent = "";
   $("userModal").classList.remove("hidden");
 }
@@ -1519,7 +1590,226 @@ $("crCopy").onclick = async () => {
 };
 $("crDone").onclick = () => $("credModal").classList.add("hidden");
 
+/* ---- upload a list of callers ---- */
+let BK = null;
+const bkPad = n => String(n).padStart(2, "0");
+const BKMON = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+function bkMake(y, mo, d){
+  y = Number(y); mo = Number(mo); d = Number(d);
+  if (y < 100) y += 2000;
+  if (!(mo >= 1 && mo <= 12) || !(d >= 1 && d <= 31) || y < 1990 || y > 2100) return "";
+  return y + "-" + bkPad(mo) + "-" + bkPad(d);
+}
+function bkDate(v){                       // accepts 01-04-2026, 1/4/26, 2026-04-01, 01-Apr-2026, Excel numbers
+  const t = String(v == null ? "" : v).trim();
+  if (!t) return "";
+  let m;
+  if ((m = /^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/.exec(t))) return bkMake(m[1], m[2], m[3]);
+  if ((m = /^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})$/.exec(t))) return bkMake(m[3], m[2], m[1]);
+  if ((m = /^(\d{1,2})[-\/. ]([A-Za-z]{3,9})[-\/. ](\d{2,4})$/.exec(t))){
+    const mo = BKMON.indexOf(m[2].slice(0, 3).toLowerCase()) + 1;
+    return mo ? bkMake(m[3], mo, m[1]) : "";
+  }
+  if (/^\d{5}$/.test(t)){
+    const d = new Date(Date.UTC(1899, 11, 30) + Number(t) * 86400000);
+    return d.getUTCFullYear() + "-" + bkPad(d.getUTCMonth() + 1) + "-" + bkPad(d.getUTCDate());
+  }
+  return "";
+}
+function bkSplit(line){
+  if (line.indexOf("\t") >= 0) return line.split("\t");
+  if (line.indexOf(",") >= 0){
+    const out = []; let cur = "", q = false;
+    for (const ch of line){
+      if (ch === '"'){ q = !q; continue; }
+      if (ch === "," && !q){ out.push(cur); cur = ""; continue; }
+      cur += ch;
+    }
+    out.push(cur); return out;
+  }
+  return line.split(/\s{2,}/);
+}
+function bkRead(text){
+  const rows = text.split(/\r?\n/).map(l => l.replace(/\s+$/, "")).filter(l => l.trim()).map(bkSplit);
+  if (!rows.length) return [];
+  const h = (rows[0] || []).map(c => String(c).trim().toLowerCase());
+  const hit = re => h.findIndex(c => re.test(c));
+  let idx = { name: 0, first: -1, last: -1, phone: 1, branch: 2, join: 3 }, body = rows;
+  if (h.some(c => /name|caller|employee/.test(c)) && h.some(c => /phone|mobile|contact|number/.test(c))){
+    idx = { name: hit(/^(full ?name|name|caller.*|employee.*)$/), first: hit(/first/), last: hit(/last|sur/),
+            phone: hit(/phone|mobile|contact|number/), branch: hit(/branch|project|site/), join: hit(/join|doj|date/) };
+    if (idx.first >= 0 || idx.last >= 0) idx.name = -1;
+    body = rows.slice(1);
+  }
+  return body.map((r, i) => {
+    const g = j => (j >= 0 && r[j] != null) ? String(r[j]).trim() : "";
+    let first = g(idx.first), last = g(idx.last);
+    if (!first && !last){
+      const parts = g(idx.name).replace(/\s+/g, " ").trim().split(" ");
+      first = parts[0] || ""; last = parts.slice(1).join(" ");
+    }
+    return { no: i + 1, first, last, phone: g(idx.phone).replace(/\D/g, ""), branch: g(idx.branch), raw: g(idx.join) };
+  }).filter(r => r.first || r.last || r.phone);
+}
+function bkCheckRows(list){
+  const seen = {}, exist = {};
+  (A.users || []).forEach(u => { const d = String(u.phone || "").replace(/\D/g, "").slice(-10); if (d) exist[d] = u.name; });
+  return list.map(r => {
+    let phone = r.phone;
+    if (phone.length === 12 && phone.slice(0, 2) === "91") phone = phone.slice(2);
+    if (phone.length === 11 && phone[0] === "0") phone = phone.slice(1);
+    const joining = bkDate(r.raw);
+    const err = !r.first ? "Name missing"
+      : !r.last ? "Last name missing (first and last name needed)"
+      : !/^[6-9]\d{9}$/.test(phone) ? "Phone is not a 10-digit mobile number"
+      : !r.branch ? "Branch missing"
+      : (r.raw && !joining) ? "Joining date not understood"
+      : exist[phone] ? "Already added as " + exist[phone]
+      : seen[phone] ? "Same phone twice in this list"
+      : "";
+    if (!err) seen[phone] = 1;
+    const known = (A.branches || []).some(b => b.toLowerCase() === r.branch.toLowerCase());
+    return { no: r.no, first: r.first, last: r.last, phone, branch: r.branch, joining, raw: r.raw, err,
+             newBranch: !err && !!r.branch && !known };
+  });
+}
+$("cBulk").onclick = () => {
+  BK = null; $("bkText").value = ""; $("bkFile").value = ""; $("bkErr").textContent = ""; $("bkErr2").textContent = "";
+  $("bkStep1").classList.remove("hidden"); $("bkStep2").classList.add("hidden"); $("bkStep3").classList.add("hidden");
+  $("bulkModal").classList.remove("hidden");
+};
+$("bkBack").onclick = () => { $("bkStep2").classList.add("hidden"); $("bkStep1").classList.remove("hidden"); };
+$("bkClose").onclick = () => $("bulkModal").classList.add("hidden");
+$("bkSample").onclick = () => {
+  const b = (A.branches || [])[0] || "Branch name";
+  const csv = "Name,Phone,Branch,Joining date\nVivek Jadhao,9876543210," + b + ",01-04-2026\nPriya Shah,9876501234," + b + ",15-04-2026\n";
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = "callers_sample.csv"; document.body.appendChild(a); a.click(); a.remove();
+};
+$("bkFile").onchange = async () => {
+  const f = $("bkFile").files[0];
+  if (!f) return;
+  $("bkErr").textContent = ""; busy(true);
+  try{
+    if (/\.csv$/i.test(f.name)) $("bkText").value = await f.text();
+    else {
+      const XLSX = await loadXLSX();
+      const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: "array", cellDates: true, dateNF: "yyyy-mm-dd" });
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, dateNF: "yyyy-mm-dd", blankrows: false, defval: "" });
+      $("bkText").value = aoa.map(r => r.map(c => String(c == null ? "" : c)).join("\t")).join("\n");
+    }
+    bkCheck();
+  }catch(e){ $("bkErr").textContent = "Could not read the file: " + e.message; }
+  busy(false);
+};
+function bkCheck(){
+  $("bkErr").textContent = "";
+  const list = bkRead($("bkText").value);
+  if (!list.length){ $("bkErr").textContent = "No rows found. Paste the rows or choose a file."; return; }
+  if (list.length > 300){ $("bkErr").textContent = "Too many rows at once (" + list.length + "). Please upload up to 300 at a time."; return; }
+  BK = bkCheckRows(list);
+  const ok = BK.filter(r => !r.err), bad = BK.filter(r => r.err);
+  const nb = [...new Set(ok.filter(r => r.newBranch).map(r => r.branch))];
+  $("bkStats").innerHTML = [["Rows in your list", BK.length], ["Ready to add", ok.length], ["Will be skipped", bad.length]]
+    .map(x => '<div class="stat"><b>' + x[1] + "</b><span>" + x[0] + "</span></div>").join("");
+  $("bkNewBr").classList.toggle("hidden", !nb.length);
+  if (nb.length) $("bkNewBr").innerHTML = "<b>New branch will be created</b>" + nb.map(esc).join(", ") +
+    " — not in your branch list yet. It will be added when you continue.";
+  $("bkTable").innerHTML = "<thead><tr><th>#</th><th>Name</th><th>Phone</th><th>Branch</th><th>Joining date</th><th>Status</th></tr></thead><tbody>" +
+    BK.map(r => '<tr class="bkrow ' + (r.err ? "bad" : "ok") + '"><td>' + r.no + "</td><td>" + esc((r.first + " " + r.last).trim() || "—") +
+      "</td><td>" + esc(r.phone || "—") + "</td><td>" + esc(r.branch || "—") + (r.newBranch ? " <b>(new)</b>" : "") +
+      "</td><td>" + (r.joining ? niceDate(r.joining) : esc(r.raw) || "—") + "</td><td>" + (r.err ? esc(r.err) : "Ready") + "</td></tr>").join("") +
+    "</tbody>";
+  $("bkAdd").disabled = !ok.length;
+  $("bkAdd").textContent = ok.length ? "Add " + ok.length + " caller" + (ok.length > 1 ? "s" : "") : "Nothing to add";
+  $("bkStep1").classList.add("hidden"); $("bkStep2").classList.remove("hidden");
+}
+$("bkCheck").onclick = bkCheck;
+$("bkAdd").onclick = async () => {
+  if (!BK) return;
+  const rows = BK.filter(r => !r.err).map(r => ({ no: r.no, first: r.first, last: r.last, phone: r.phone, branch: r.branch, joining: r.joining }));
+  if (!rows.length) return;
+  $("bkErr2").textContent = ""; busy(true);
+  try{
+    A = await call("bulkAddUsers", { rows });
+    const b = A.bulk || { added: [], skipped: [] };
+    BK = null; renderAdmin();
+    $("bkDoneHead").textContent = b.added.length + " caller" + (b.added.length === 1 ? "" : "s") + " added";
+    $("bkCreds").innerHTML = "<thead><tr><th>Name</th><th>Branch</th><th>Login ID</th><th>Password</th><th></th></tr></thead><tbody>" +
+      b.added.map(c => {
+        const d = String(c.phone || "").replace(/\D/g, "").slice(-10);
+        return "<tr><td>" + esc(c.name) + "</td><td>" + esc(c.branch) + '</td><td class="mono">' + esc(c.username) +
+          '</td><td class="mono">' + esc(c.password) + "</td><td>" + (d ? '<a class="link" target="_blank" rel="noopener" href="https://api.whatsapp.com/send?phone=91' +
+          d + "&text=" + encodeURIComponent(credText(c)) + '">Send</a>' : "—") + "</td></tr>";
+      }).join("") + "</tbody>";
+    $("bkLeft").classList.toggle("hidden", !b.skipped.length);
+    if (b.skipped.length) $("bkLeft").innerHTML = "<b>" + b.skipped.length + " row" + (b.skipped.length === 1 ? "" : "s") +
+      " skipped</b>" + b.skipped.map(x => esc(x.name) + " – " + esc(x.reason)).join("<br>");
+    BKCREDS = b.added;
+    $("bkStep2").classList.add("hidden"); $("bkStep3").classList.remove("hidden");
+    toast(b.added.length + " callers added");
+  }catch(err){ $("bkErr2").textContent = err.message; }
+  busy(false);
+};
+let BKCREDS = [];
+$("bkCopyAll").onclick = async () => {
+  const text = BKCREDS.map(c => c.name + " | " + c.username + " | " + c.password).join("\n");
+  try{ await navigator.clipboard.writeText(text); toast("Login details copied"); }
+  catch(e){ toast("Copy blocked – use the Excel download"); }
+};
+$("bkXls").onclick = async () => {
+  busy(true);
+  try{
+    const XLSX = await loadXLSX();
+    const rows = [["Name", "Branch", "Joining date", "Phone", "Login ID", "Password"],
+      ...BKCREDS.map(c => [c.name, c.branch, niceDate(c.joining), c.phone, c.username, c.password])];
+    const wb = XLSX.book_new ? XLSX.book_new() : XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheetFrom(XLSX, rows, [22, 24, 14, 16, 20, 12], []), "Logins");
+    XLSX.writeFile(wb, "Caller_logins_" + niceDate(A.today) + ".xlsx");
+    toast("Excel downloaded");
+  }catch(e){ popup("Download failed", e.message); }
+  busy(false);
+};
+
+/* ---- delete a caller ---- */
+let deleting = null;
+$("uDelete").onclick = async () => {
+  if (!editing) return;
+  busy(true);
+  try{
+    const d = await call("deleteUser", { username: editing.username, check: true });
+    deleting = d;
+    $("dlWho").textContent = d.name + (d.branch ? " · " + d.branch : "") + " (" + d.username + ")";
+    $("dlInfo").textContent = " The caller and the login ID are removed from the Employees sheet." +
+      (d.attendance ? " Their " + d.attendance + " attendance records stay in the sheet unless you tick the box below." : " They have no attendance records.") +
+      (d.requests ? " " + d.requests + " logout request(s) will also go." : "");
+    $("dlAtt").checked = false;
+    $("dlAttTxt").innerHTML = d.attendance ? "Also delete their <b>" + d.attendance + "</b> attendance records (login and logout history)" : "No attendance records to delete";
+    $("dlAtt").disabled = !d.attendance;
+    $("dlErr").textContent = "";
+    $("userModal").classList.add("hidden");
+    $("delModal").classList.remove("hidden");
+  }catch(err){ $("uErr").textContent = err.message; }
+  busy(false);
+};
+$("dlGo").onclick = async () => {
+  if (!deleting) return;
+  busy(true);
+  try{
+    A = await call("deleteUser", { username: deleting.username, withAttendance: $("dlAtt").checked });
+    const d = A.deleted || {};
+    renderAdmin(); $("delModal").classList.add("hidden");
+    popup("Caller deleted", d.name + " has been removed." +
+      (d.attendance ? " " + d.attendance + " attendance records were deleted too." : "") +
+      (d.kept ? " Their " + d.kept + " attendance records are still in the sheet." : ""), "🗑️");
+    deleting = null;
+  }catch(err){ $("dlErr").textContent = err.message; }
+  busy(false);
+};
+
 /* ---- lists ---- */
+
 $("lSave").onclick = async () => {
   const lines = id => $(id).value.split("\n").map(s => s.trim()).filter(Boolean);
   $("lErr").textContent = "";
