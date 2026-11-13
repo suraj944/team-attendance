@@ -791,13 +791,13 @@ function refresh(){
   if (posted){
     blocked = true; box.className = "alert warn";
     box.innerHTML = "<b>⚠️ " + (mode==="login"?"Login":"Logout") + " already posted today</b>You posted your " + mode +
-      " at " + esc(posted.time) + ". Only one " + mode + " is allowed per day.";
+      " at " + esc(posted.time) + ". Only one " + mode + " is allowed per day. If WhatsApp closed by mistake, press <b>Open WhatsApp again</b> to send the same message.";
   } else if (mode === "logout" && !t.login){
     blocked = true; box.className = "alert warn";
     box.innerHTML = "<b>⚠️ Post your Login first</b>You can post the Logout only after today's Login.";
   }
-  $("submitBtn").disabled = blocked;
-  $("submitBtn").textContent = blocked ? (posted ? "Already posted today" : "Login required first")
+  $("submitBtn").disabled = blocked && !posted;
+  $("submitBtn").textContent = blocked ? (posted ? "Open WhatsApp again" : "Login required first")
     : "Submit " + (mode==="login"?"Login":"Logout") + " & open WhatsApp";
   ["fCp","fSm","fLoc","fLocOther","lHour","lMin","lAp",...LOGOUT_IDS].forEach(id => $(id).disabled = blocked);
   if (mode === "logout"){
@@ -887,6 +887,16 @@ function validate(){
 let pending = null;
 $("attForm").addEventListener("submit", e => {
   e.preventDefault();
+  const done = S && S.today[mode];
+  if (done){   // already saved today: show the same message again (no new entry is created)
+    const msg = done.message || buildMessage();
+    $("c2Title").textContent = "Your " + (mode === "login" ? "Login" : "Logout") + " message";
+    $("c2Msg").textContent = msg;
+    $("c2Wa").href = "https://api.whatsapp.com/send?text=" + encodeURIComponent(msg);
+    $("cStep1").classList.add("hidden"); $("cStep2").classList.remove("hidden");
+    $("confirm").classList.remove("hidden");
+    return;
+  }
   const err = validate(); $("formErr").textContent = err; if (err) return;
   $("fTime").value = fmt12(nowMinutes());
   pending = mode === "login"
