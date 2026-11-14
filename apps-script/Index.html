@@ -300,6 +300,16 @@
         <select id="lMin" aria-label="Minute"></select>
         <select id="lAp" aria-label="AM or PM"><option>AM</option><option>PM</option></select>
       </div>
+      <p class="hint" style="text-align:left;margin-top:6px">Put the time you actually started, not the time you are posting.</p>
+    </div>
+    <div id="logoutTimeBox" class="hidden">
+      <label for="oHour">Logout time</label>
+      <div class="t3">
+        <select id="oHour" aria-label="Hour"></select>
+        <select id="oMin" aria-label="Minute"></select>
+        <select id="oAp" aria-label="AM or PM"><option>AM</option><option>PM</option></select>
+      </div>
+      <p class="hint" style="text-align:left;margin-top:6px">Now is filled in for you. If you left earlier, change it to the time you actually left.</p>
     </div>
 
     <label>Caller name</label>
@@ -732,6 +742,7 @@ const store = {
 function msgDate(key){ const p = key.split("-"); return Number(p[2]) + "-" + Number(p[1]) + "-" + p[0].slice(2); }
 function niceDate(key){ if(!key) return ""; const p = key.split("-"); return p.length===3 ? p[2]+"-"+p[1]+"-"+p[0] : key; }
 function fmt12(mins){ let h=Math.floor(mins/60), m=mins%60; const ap=h>=12?"PM":"AM"; h=h%12||12; return h+":"+pad(m)+" "+ap; }
+function parse12(t){ const m=/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(String(t||"").trim()); if(!m) return null; return (Number(m[1])%12 + (/pm/i.test(m[3])?12:0))*60 + Number(m[2]); }
 function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),2600); }
 function popup(title, text, icon){ $("mTitle").textContent=title; $("mText").textContent=text; $("mIcon").textContent=icon||"⚠️"; $("modal").classList.remove("hidden"); }
 $("mOk").onclick = () => $("modal").classList.add("hidden");
@@ -807,6 +818,8 @@ const LOGOUT_IDS = ["oTotal","oConnect","oLead","oVisitToday","oVisitTom","oBook
 
 fill($("lHour"), Array.from({length:12}, (_, i) => String(i+1)), "", "Hour");
 fill($("lMin"),  Array.from({length:60}, (_, i) => pad(i)), "", "Min");
+fill($("oHour"), Array.from({length:12}, (_, i) => String(i+1)), "", "Hour");
+fill($("oMin"),  Array.from({length:60}, (_, i) => pad(i)), "", "Min");
 
 function startCaller(st){
   S = st;
@@ -841,13 +854,15 @@ function refresh(){
   const t = S.today, posted = t[mode];
   $("fDate").value = msgDate(t.date);
 
-  // time: login = editable pickers until posted; logout = locked server time
-  const editLogin = mode === "login" && !posted;
-  $("loginTimeBox").classList.toggle("hidden", !editLogin);
-  $("timeCol").classList.toggle("hidden", editLogin);
-  $("dtRow").classList.toggle("one", editLogin);
+  // time: the caller chooses it until it is posted; after that it is fixed
+  const editTime = !posted;
+  $("loginTimeBox").classList.toggle("hidden", !(editTime && mode === "login"));
+  $("logoutTimeBox").classList.toggle("hidden", !(editTime && mode === "logout"));
+  $("timeCol").classList.toggle("hidden", editTime);
+  $("dtRow").classList.toggle("one", editTime);
   $("timeLabel").textContent = mode === "login" ? "Login time" : "Logout time";
   $("fTime").value = posted ? posted.time : fmt12(nowMinutes());
+  if (editTime && mode === "logout" && !$("oHour").value) setLogoutTime(nowMinutes());
 
   $("pillLogin").textContent  = t.login  ? "Login: " + t.login.time   : "Login: not posted";
   $("pillLogout").textContent = t.logout ? "Logout: " + t.logout.time : "Logout: not posted";
@@ -869,7 +884,7 @@ function refresh(){
   $("submitBtn").disabled = blocked && !posted;
   $("submitBtn").textContent = blocked ? (posted ? "Open WhatsApp again" : "Login required first")
     : "Submit " + (mode==="login"?"Login":"Logout") + " & open WhatsApp";
-  ["fCp","fSm","fLoc","fLocOther","lHour","lMin","lAp",...LOGOUT_IDS].forEach(id => $(id).disabled = blocked);
+  ["fCp","fSm","fLoc","fLocOther","lHour","lMin","lAp","oHour","oMin","oAp",...LOGOUT_IDS].forEach(id => $(id).disabled = blocked);
   if (mode === "logout"){
     if (t.login) fill($("fSm"), S.config.sms.includes(t.login.sm) ? S.config.sms : [t.login.sm, ...S.config.sms], t.login.sm);
     $("fSm").disabled = true;
@@ -896,6 +911,18 @@ function refresh(){
 }
 
 function getLoc(){ return $("fLoc").value === "Other…" ? v("fLocOther") : $("fLoc").value; }
+function setLogoutTime(mins){
+  const h = Math.floor(mins / 60);
+  $("oHour").value = String(h % 12 || 12);
+  $("oMin").value = pad(mins % 60);
+  $("oAp").value = h >= 12 ? "PM" : "AM";
+}
+function logoutTimeText(){
+  const h = $("oHour").value, m = $("oMin").value;
+  if (!h || !m) return "";
+  return h + ":" + m + " " + $("oAp").value;
+}
+function logoutMinutes(){ return (Number($("oHour").value) % 12 + ($("oAp").value === "PM" ? 12 : 0)) * 60 + Number($("oMin").value); }
 function loginTimeText(){
   const h = $("lHour").value, m = $("lMin").value;
   if (!h || !m) return "";
@@ -919,7 +946,7 @@ function buildMessage(){
     "SM Name - " + (t.login ? t.login.sm : ""),
     "Total Calls:- " + v("oTotal"),
     "Connect Calls: " + v("oConnect"),
-    "Log out time:- " + $("fTime").value,
+    "Log out time:- " + logoutTimeText(),
     "Lead of the day:- " + v("oLead"),
     "Site visit done today- " + v("oVisitToday"),
     "Tomorrow site visit: " + v("oVisitTom"),
@@ -931,7 +958,7 @@ function updatePreview(){
   $("fLocOther").classList.toggle("hidden", $("fLoc").value !== "Other…");
   $("preview").innerHTML = '<span class="h">' + esc(S.user.name) + '</span>\n' + esc(buildMessage());
 }
-["fCp","fSm","fLoc","fLocOther","lHour","lMin","lAp",...LOGOUT_IDS].forEach(id => {
+["fCp","fSm","fLoc","fLocOther","lHour","lMin","lAp","oHour","oMin","oAp",...LOGOUT_IDS].forEach(id => {
   $(id).addEventListener("input", updatePreview); $(id).addEventListener("change", updatePreview);
 });
 
@@ -947,6 +974,10 @@ function validate(){
   }
   const names = { oTotal:"Total calls", oConnect:"Connect calls", oLead:"Lead of the day",
     oVisitToday:"Site visit done today", oVisitTom:"Tomorrow site visit", oBooking:"Booking", oWtd:"Site visit confirmed WTD" };
+  if (!logoutTimeText()) return "Please choose the logout time (hour and minute).";
+  if (logoutMinutes() > nowMinutes()) return "Logout time cannot be in the future.";
+  const li = S.today.login;
+  if (li && logoutMinutes() <= parse12(li.time)) return "Logout time must be after your login time (" + li.time + ").";
   const empty = LOGOUT_IDS.filter(id => !v(id)).map(id => names[id]);
   if (empty.length) return "Please fill: " + empty.join(", ") + " (put 0 if none).";
   if (Number(v("oConnect")) > Number(v("oTotal"))) return "Connect calls cannot be more than Total calls.";
@@ -968,12 +999,11 @@ $("attForm").addEventListener("submit", e => {
     return;
   }
   const err = validate(); $("formErr").textContent = err; if (err) return;
-  $("fTime").value = fmt12(nowMinutes());
   pending = mode === "login"
     ? { type:"login", data:{ hour:$("lHour").value, min:$("lMin").value, ap:$("lAp").value, sm:$("fSm").value, cp:v("fCp"), loc:getLoc() } }
-    : { type:"logout", data:{ total:v("oTotal"), connect:v("oConnect"), lead:v("oLead"), visitToday:v("oVisitToday"), visitTom:v("oVisitTom"), booking:v("oBooking"), wtd:v("oWtd") } };
+    : { type:"logout", data:{ hour:$("oHour").value, min:$("oMin").value, ap:$("oAp").value, total:v("oTotal"), connect:v("oConnect"), lead:v("oLead"), visitToday:v("oVisitToday"), visitTom:v("oVisitTom"), booking:v("oBooking"), wtd:v("oWtd") } };
   $("cTitle").textContent = "Confirm your " + (mode === "login" ? "Login" : "Logout");
-  $("cMsg").textContent = buildMessage() + (mode === "logout" ? "\n\n(Logout time is taken at the moment you press Post.)" : "");
+  $("cMsg").textContent = buildMessage();
   $("cStep1").classList.remove("hidden"); $("cStep2").classList.add("hidden");
   $("confirm").classList.remove("hidden");
 });
@@ -986,7 +1016,7 @@ $("cOk").onclick = async () => {
   try{
     const res = await call("post", p);
     if (p.type === "login") store.set("att_last_" + S.user.username, JSON.stringify({ sm:p.data.sm, loc:$("fLoc").value, cp:p.data.cp }));
-    else LOGOUT_IDS.forEach(id => $(id).value = "");
+    else { LOGOUT_IDS.forEach(id => $(id).value = ""); $("oHour").value = ""; $("oMin").value = ""; $("oAp").value = "AM"; }
     $("lHour").value = ""; $("lMin").value = ""; $("lAp").value = "AM";
     S = res.state;
     $("c2Title").textContent = (p.type === "login" ? "Login" : "Logout") + " saved";

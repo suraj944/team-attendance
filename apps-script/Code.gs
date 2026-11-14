@@ -112,14 +112,19 @@ function buildSummaries_(ss) {
   for (let r = 6; r < 6 + SUMMARY_ROWS; r++) {
     const ID = '$A' + r, JOIN = 'IF($D' + r + '="",0,$D' + r + ')', J = 'MAX($B$4,' + JOIN + ')';
     const inMonth = id + ',' + ID + ',' + dt + ',">="&' + S + ',' + dt + ',"<="&' + END;
-    const gone = id + ',' + ID + ',' + dt + ',">="&MAX(' + S + ',' + J + '),' + dt + ',"<="&' + PAST;
+    // Today is only counted once it is over, EXCEPT for a caller who has already posted today,
+    // so that "Present" and "Working Days" always cover the same days.
+    const hasToday = 'COUNTIFS(' + id + ',' + ID + ',' + dt + ',">="&TODAY(),' + dt + ',"<="&TODAY())>0';
+    const ENDR = 'IF(AND(TODAY()>=' + S + ',TODAY()<=' + END + ',' + hasToday + '),TODAY(),' + PAST + ')';
+    const gone = id + ',' + ID + ',' + dt + ',">="&MAX(' + S + ',' + J + '),' + dt + ',"<="&' + ENDR;
     const goneJ = id + ',' + ID + ',' + dt + ',">="&MAX(' + S + ',' + JOIN + '),' + dt + ',"<="&' + PAST;
     const allJ = id + ',' + ID + ',' + dt + ',">="&MAX(' + S + ',' + JOIN + '),' + dt + ',"<="&' + END;
     const W = (x) => '=IF(' + ID + '="","",' + x + ')';
     f.push([
-      W('MAX(0,NETWORKDAYS.INTL(MAX(' + S + ',' + J + '),' + PAST + ',$B$3))'),
+      // working days + any day actually worked on the weekly off, so Present + Absent = Working Days
+      W('MAX(0,NETWORKDAYS.INTL(MAX(' + S + ',' + J + '),' + ENDR + ',$B$3))+COUNTIFS(' + gone + ',' + A('Day') + ',LEFT($B$2,3))'),
       W('COUNTIFS(' + inMonth + ')'),
-      W('MAX(0,$E' + r + '-COUNTIFS(' + gone + ',' + A('Day') + ',"<>"&LEFT($B$2,3)))'),
+      W('MAX(0,$E' + r + '-COUNTIFS(' + gone + '))'),
       '=IF(OR(' + ID + '="",$F' + r + '+$G' + r + '=0),"",$F' + r + '/($F' + r + '+$G' + r + '))',
       W('COUNTIFS(' + inMonth + ',' + A('Late') + ',"Yes")'),
       W('COUNTIFS(' + goneJ + ',' + A('Status') + ',"Logout pending")+COUNTIFS(' + allJ + ',' + A('Status') + ',"Logout missed")'),
@@ -592,7 +597,19 @@ const API = {
       } else {
         if (!st.today.login) throw new Error('Please post your Login first.');
         Object.assign(rec, logoutFields_(d));
-        rec.time = fmt12_(nowMinutes_());           // logout time = server time, cannot be changed
+        const lmins = parse12_(st.today.login.time);
+        let omins;
+        if (d.hour === undefined || d.hour === '') {
+          omins = nowMinutes_();                    // older page open somewhere: fall back to the server clock
+        } else {
+          const oh = Number(d.hour), om = Number(d.min);
+          if (!(oh >= 1 && oh <= 12) || !(om >= 0 && om <= 59) || (d.ap !== 'AM' && d.ap !== 'PM'))
+            throw new Error('Please choose the logout time.');
+          omins = (oh % 12 + (d.ap === 'PM' ? 12 : 0)) * 60 + om;
+        }
+        if (omins > nowMinutes_()) throw new Error('Logout time cannot be in the future.');
+        if (omins <= lmins) throw new Error('Logout time must be after your login time (' + st.today.login.time + ').');
+        rec.time = fmt12_(omins);
         rec.sm = st.today.login.sm;                 // SM fixed from today's login
       }
       let message = type === 'login' ? buildMessage_(type, today, u.name, rec) : '';
