@@ -653,9 +653,9 @@
     <div id="bkStep1">
       <p class="lead">Copy the rows from Excel and paste them below, or choose the file. A heading row is fine.</p>
       <div class="colbox">
-        <div class="colrow"><span class="tag req">Required</span><span class="chip">Name</span><span class="chip">Phone</span><span class="chip">Branch</span><span class="chip">SM</span><span class="chip">CP firm</span><span class="chip">Location</span></div>
-        <div class="colrow"><span class="tag opt">Optional</span><span class="chip">Joining date</span><span class="chip">PAN</span><span class="chip">Aadhaar</span></div>
-        <p class="colnote">With a heading row the columns can be in any order. Without one, they must be: Name, Phone, Branch, Joining date, SM, CP firm, Location.</p>
+        <div class="colrow"><span class="tag req">Required</span><span class="chip">Name</span><span class="chip">Phone</span><span class="chip">Branch</span><span class="chip">Joining date</span><span class="chip">SM</span><span class="chip">CP firm</span><span class="chip">Location</span></div>
+        <div class="colrow"><span class="tag opt">Optional</span><span class="chip">PAN</span><span class="chip">Aadhaar</span></div>
+        <p class="colnote">With a heading row the columns can be in any order. Without one, they must be in the order shown above.</p>
       </div>
       <div class="row" style="margin-top:12px">
         <div><label for="bkFile">Excel or CSV file</label>
@@ -1790,7 +1790,8 @@ function bkCheckRows(list){
       : !r.sm ? "SM missing"
       : !r.cp ? "CP firm missing"
       : !r.loc ? "Location missing"
-      : (r.raw && !joining) ? "Joining date not understood"
+      : !r.raw ? "Joining date missing"
+      : !joining ? "Joining date not understood"
       : exist[phone] ? "Already added as " + exist[phone]
       : seen[phone] ? "Same phone twice in this list"
       : "";
