@@ -27,7 +27,7 @@ function ss_() { return SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.
 
 const COLS = {
   'Employees': ['Employee ID', 'First Name', 'Last Name', 'Full Name', 'Phone', 'Branch', 'Joining Date',
-                'Role', 'Status', 'Created On', 'Password Hash', 'PAN', 'Aadhaar', 'Alternate Contact', 'SM', 'CP Firm'],
+                'Role', 'Status', 'Created On', 'Password Hash', 'PAN', 'Aadhaar', 'SM', 'CP Firm'],
   'Attendance': ['Date', 'Day', 'Employee ID', 'Employee Name', 'Branch', 'SM', 'CP Firm', 'Location',
                  'Login Time', 'Late', 'Logout Time', 'Hours Worked', 'Total Calls', 'Connect Calls', 'Connect %',
                  'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Booking', 'Site Visit Confirmed WTD', 'Status',
@@ -391,7 +391,7 @@ function users_() {
              first: o['First Name'], last: o['Last Name'], phone: o['Phone'] || '', branch: o['Branch'], joining: o['Joining Date'],
              role: String(o['Role'] || 'Caller').toLowerCase() === 'admin' ? 'admin' : 'caller',
              active: String(o['Status'] || 'Active').toLowerCase() === 'inactive' ? 'no' : 'yes',
-             pan: o['PAN'] || '', aadhaar: o['Aadhaar'] || '', altPhone: o['Alternate Contact'] || '',
+             pan: o['PAN'] || '', aadhaar: o['Aadhaar'] || '',
              sm: o['SM'] || '', cp: o['CP Firm'] || '',
              created: o['Created On'], row: o._row, raw: o };
   }).filter(function (u) { return u.username; });
@@ -400,23 +400,18 @@ function findUser_(username) {
   username = String(username || '').trim().toLowerCase();
   return users_().filter(function (u) { return u.username === username; })[0] || null;
 }
-/* The three optional ID fields. Blank is always allowed; a wrong-looking value is refused. */
+/* The optional fields kept with a caller. Blank is always allowed; a wrong-looking value is refused. */
 function idFields_(x) {
   const pan = String(x.pan || '').trim().toUpperCase().replace(/\s+/g, '');
   const aadhaar = String(x.aadhaar || '').replace(/\D/g, '');
-  let alt = String(x.altPhone || '').replace(/\D/g, '');
-  if (alt.length === 12 && alt.indexOf('91') === 0) alt = alt.slice(2);
-  if (alt.length === 11 && alt[0] === '0') alt = alt.slice(1);
   if (pan && !/^[A-Z]{5}\d{4}[A-Z]$/.test(pan)) throw new Error('PAN should look like ABCDE1234F. Leave it blank if you do not have it.');
   if (aadhaar && aadhaar.length !== 12) throw new Error('Aadhaar should be 12 digits. Leave it blank if you do not have it.');
-  if (alt && !/^[6-9]\d{9}$/.test(alt)) throw new Error('The alternate contact should be a 10-digit mobile number.');
-  return { 'PAN': pan, 'Aadhaar': aadhaar ? "'" + aadhaar : '', 'Alternate Contact': alt ? '+91 ' + alt : '',
+  return { 'PAN': pan, 'Aadhaar': aadhaar ? "'" + aadhaar : '',
            'SM': String(x.sm || '').trim(), 'CP Firm': String(x.cp || '').trim() };
 }
 function publicUser_(u) {
   return { username: u.username, name: u.name, phone: u.phone, branch: u.branch, joining: u.joining, role: u.role,
-           active: u.active, created: u.created, pan: u.pan, aadhaar: u.aadhaar, altPhone: u.altPhone,
-           sm: u.sm, cp: u.cp };
+           active: u.active, created: u.created, pan: u.pan, aadhaar: u.aadhaar, sm: u.sm, cp: u.cp };
 }
 function newToken_(username) {
   const props = PropertiesService.getScriptProperties(), today = todayKey_(), all = props.getProperties();
