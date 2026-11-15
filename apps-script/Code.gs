@@ -410,7 +410,8 @@ function idFields_(x) {
            'CP Firm': String(x.cp || '').trim(), 'Location': String(x.loc || '').trim() };
 }
 function publicUser_(u) {
-  return { username: u.username, name: u.name, phone: u.phone, branch: u.branch, joining: u.joining, role: u.role,
+  return { username: u.username, name: u.name, first: u.first, last: u.last,
+           phone: u.phone, branch: u.branch, joining: u.joining, role: u.role,
            active: u.active, created: u.created, pan: u.pan, aadhaar: u.aadhaar, sm: u.sm, cp: u.cp, loc: u.loc };
 }
 function newToken_(username) {

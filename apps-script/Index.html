@@ -215,6 +215,8 @@
   .tag.opt{background:#e4eae8;color:#5d6b66}
   .colrow .chip{font-size:13px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 10px}
   .vhide{position:absolute;width:1px;height:1px;opacity:0}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap}
+  .btnrow button{flex:1 1 0;min-width:0;padding:0 10px;white-space:nowrap}
   .filebtn{display:flex;align-items:center;gap:12px;height:46px;padding:0 14px;background:#fff;border:1px solid var(--line);border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--ink)}
   .filebtn:hover{border-color:var(--brand);color:var(--brand)}
   .filebtn em{min-width:0;font-style:normal;font-weight:400;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -538,6 +540,7 @@
       <div><label for="cBranch">Branch</label><select id="cBranch"></select></div>
       <button type="button" id="cAdd">+ Add caller</button>
       <button type="button" id="cBulk" class="ghost">⬆ Upload list</button>
+      <button type="button" id="cDown" class="ghost">⬇ Download list</button>
     </div>
     <div class="tablewrap"><table>
       <thead><tr><th>Name</th><th>Phone</th><th>Login ID</th><th>Branch</th><th>Joining date</th><th>Role</th><th>Status</th><th></th></tr></thead>
@@ -676,7 +679,13 @@
         <div><label for="bkFile">Excel or CSV file</label>
           <label class="filebtn" for="bkFile"><span>Choose file</span><em id="bkFileName">No file chosen</em></label>
           <input type="file" id="bkFile" accept=".xlsx,.xls,.csv" class="vhide"></div>
-        <div><label>Not sure of the format?</label><button type="button" class="ghost" id="bkSample">Download a sample file</button></div>
+        <div><label>Downloads</label>
+          <div class="btnrow">
+            <button type="button" class="ghost" id="bkSample">⬇ Sample file</button>
+            <button type="button" class="ghost" id="bkExport">⬇ Caller list</button>
+          </div>
+          <p class="hint" style="text-align:left;margin:6px 0 0"><b>Caller list</b> downloads everyone already on the site, in the same columns as the upload.</p>
+        </div>
       </div>
       <div class="gridtop"><label style="margin:0">…or fill the rows here</label><span class="gcount" id="gCount">0 rows filled</span></div>
       <div class="xl">
@@ -1640,7 +1649,39 @@ function renderCallers(){
   ).join("") : '<tr><td colspan="8" style="color:var(--muted)">No callers found.</td></tr>';
   document.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openUser(b.dataset.edit));
   document.querySelectorAll("[data-move]").forEach(b => b.onclick = () => openTransfer(b.dataset.move));
+  CLIST = list;
 }
+let CLIST = [];
+function callerSheetRows(list){
+  return [["First name", "Last name", "Phone", "Login ID", "Branch", "Joining date", "SM", "CP firm",
+           "Location", "PAN", "Aadhaar", "Role", "Status", "Added on"],
+    ...list.map(u => {
+      const parts = String(u.name || "").replace(/\s+/g, " ").trim().split(" ");
+      const first = u.first || parts[0] || "";
+      const last = (u.last != null && String(u.last).trim()) ? String(u.last).trim() : parts.slice(1).join(" ");
+      return [first, last, String(u.phone || "").replace(/\D/g, "").slice(-10), u.username || "", u.branch || "",
+        niceDate(u.joining) || "", u.sm || "", u.cp || "", u.loc || "", u.pan || "",
+        String(u.aadhaar || "").replace(/^'/, ""), u.role === "admin" ? "Admin" : "Caller",
+        u.active === "no" ? "Inactive" : "Active", String(u.created || "").slice(0, 10)];
+    })];
+}
+async function downloadCallers(list, tag){
+  if (!list.length) return toast("No callers to download");
+  busy(true);
+  try{
+    const XLSX = await loadXLSX();
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheetFrom(XLSX,
+      callerSheetRows(list), [16, 16, 14, 20, 24, 14, 18, 16, 18, 13, 16, 9, 10, 12], []), "Callers");
+    XLSX.writeFile(wb, "Caller_list_" + niceDate(A.today) + (tag || "") + ".xlsx");
+    toast(list.length + " caller" + (list.length === 1 ? "" : "s") + " downloaded");
+  }catch(e){ popup("Download failed", e.message); }
+  busy(false);
+}
+$("cDown").onclick = () => {
+  const b = $("cBranch").value;
+  downloadCallers(CLIST.length ? CLIST : (A.users || []), b ? "_" + b.replace(/[^A-Za-z0-9]+/g, "_") : "");
+};
 
 let editing = null;
 $("cAdd").onclick = () => openUser(null);
@@ -1892,6 +1933,7 @@ $("bkSample").onclick = () => {
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   a.download = "callers_sample.csv"; document.body.appendChild(a); a.click(); a.remove();
 };
+$("bkExport").onclick = () => downloadCallers((A.users || []).filter(u => u.role === "caller"), "");
 $("bkFile").onchange = async () => {
   const f = $("bkFile").files[0];
   $("bkFileName").textContent = f ? f.name : "No file chosen";
