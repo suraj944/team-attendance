@@ -754,6 +754,11 @@ const API = {
     if (phone) phone = '+91 ' + phone;
 
     const ids = idFields_(x);
+    if (role === 'caller') {
+      if (!ids['SM']) throw new Error('Please choose the SM name.');
+      if (!ids['CP Firm']) throw new Error('Please choose the CP firm.');
+      if (!ids['Location']) throw new Error('Please choose the location.');
+    }
     if (x.isNew) {
       if (role === 'caller' && !x.branch) throw new Error('Please choose the branch.');
       if (digits && users_().some(function (u) { return u.phone.replace(/\D/g, '').slice(-10) === digits; }))
@@ -814,6 +819,9 @@ const API = {
           : !last ? 'Last name missing'
           : !/^[6-9]\d{9}$/.test(phone) ? 'Phone is not a 10-digit mobile number'
           : !branchIn ? 'Branch missing'
+          : !String(r.sm || '').trim() ? 'SM missing'
+          : !String(r.cp || '').trim() ? 'CP firm missing'
+          : !String(r.loc || '').trim() ? 'Location missing'
           : (joining && !/^\d{4}-\d{2}-\d{2}$/.test(joining)) ? 'Joining date not understood'
           : phones[phone] ? 'Phone already used by ' + phones[phone]
           : '';

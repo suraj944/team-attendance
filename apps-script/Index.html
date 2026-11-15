@@ -621,7 +621,7 @@
         <div><label for="uCp">CP firm</label><select id="uCp"></select></div>
       </div>
       <label for="uLoc">Location</label><select id="uLoc"></select>
-      <p class="hint" style="text-align:left;margin:8px 0 12px">Filled in on the caller's Login every day. Only you can change these three.</p>
+      <p class="hint" style="text-align:left;margin:8px 0 12px">All three are needed. They are filled in on the caller's Login every day, and only you can change them.</p>
       <div id="uBranchNow" class="hint hidden"></div>
       <label for="uJoin">Joining date <span style="font-weight:400;color:var(--muted)">(tap to open calendar)</span></label><input id="uJoin" type="date">
       <details id="uIdBlock" style="margin:6px 0 10px">
@@ -653,9 +653,9 @@
     <div id="bkStep1">
       <p class="lead">Copy the rows from Excel and paste them below, or choose the file. A heading row is fine.</p>
       <div class="colbox">
-        <div class="colrow"><span class="tag req">Required</span><span class="chip">Name</span><span class="chip">Phone</span><span class="chip">Branch</span><span class="chip">Joining date</span></div>
-        <div class="colrow"><span class="tag opt">Optional</span><span class="chip">SM</span><span class="chip">CP firm</span><span class="chip">Location</span><span class="chip">PAN</span><span class="chip">Aadhaar</span></div>
-        <p class="colnote">Without a heading row, keep the four required columns in that order. With one, the columns can be in any order.</p>
+        <div class="colrow"><span class="tag req">Required</span><span class="chip">Name</span><span class="chip">Phone</span><span class="chip">Branch</span><span class="chip">SM</span><span class="chip">CP firm</span><span class="chip">Location</span></div>
+        <div class="colrow"><span class="tag opt">Optional</span><span class="chip">Joining date</span><span class="chip">PAN</span><span class="chip">Aadhaar</span></div>
+        <p class="colnote">With a heading row the columns can be in any order. Without one, they must be: Name, Phone, Branch, Joining date, SM, CP firm, Location.</p>
       </div>
       <div class="row" style="margin-top:12px">
         <div><label for="bkFile">Excel or CSV file</label>
@@ -664,7 +664,7 @@
         <div><label>Not sure of the format?</label><button type="button" class="ghost" id="bkSample">Download a sample file</button></div>
       </div>
       <label for="bkText">…or paste the rows here</label>
-      <textarea id="bkText" rows="7" placeholder="Name&#9;Phone&#9;Branch&#9;Joining date&#9;SM&#9;CP firm&#10;Vivek Jadhao&#9;9876543210&#9;Elements&#9;01-04-2026&#9;Aman Kamble&#9;Ghar Lo"></textarea>
+      <textarea id="bkText" rows="7" placeholder="Name&#9;Phone&#9;Branch&#9;Joining date&#9;SM&#9;CP firm&#9;Location&#10;Vivek Jadhao&#9;9876543210&#9;Elements&#9;01-04-2026&#9;Aman Kamble&#9;Ghar Lo&#9;Seawoods"></textarea>
       <button type="button" id="bkCheck">Check the list</button>
       <button type="button" class="ghost" data-close="bulkModal">Cancel</button>
       <div class="err" id="bkErr"></div>
@@ -1633,9 +1633,9 @@ function openUser(username){
   $("uIdBox").classList.toggle("hidden", !editing);
   $("uAutoNote").classList.toggle("hidden", !!editing);
   fill($("uBranch"), A.branches, "", "Select branch");
-  fill($("uSm"), A.sms, editing ? (editing.sm || "") : "", "Not set");
-  fill($("uCp"), A.cpFirms || [], editing ? (editing.cp || "") : "", "Not set");
-  fill($("uLoc"), A.locations, editing ? (editing.loc || "") : "", "Not set");
+  fill($("uSm"), A.sms, editing ? (editing.sm || "") : "", "Select SM");
+  fill($("uCp"), A.cpFirms || [], editing ? (editing.cp || "") : "", "Select CP firm");
+  fill($("uLoc"), A.locations, editing ? (editing.loc || "") : "", "Select location");
   $("uBranchBox").classList.toggle("hidden", !!editing);
   $("uBranchNow").classList.toggle("hidden", !editing);
   if (editing) $("uBranchNow").textContent = "Branch: " + (editing.branch || "—") + " (use “Change branch” to move)";
@@ -1656,8 +1656,8 @@ $("userForm").addEventListener("submit", async e => {
     branch: $("uBranch").value, joining: $("uJoin").value, role: $("uRole").value, active: $("uActive").value,
     pan: v("uPan"), aadhaar: v("uAadhaar"), sm: $("uSm").value, cp: $("uCp").value, loc: $("uLoc").value };
   busy(true);
-  try{ A = await call("saveUser", { user }); renderAdmin(); $("userModal").classList.add("hidden");
-       if (A.credentials) showCredentials(A.credentials); else toast("Saved"); }
+  try{ const res = await call("saveUser", { user }); A = res || A; renderAdmin(); $("userModal").classList.add("hidden");
+       if (res && res.credentials) showCredentials(res.credentials); else toast("Saved"); }
   catch(err){ $("uErr").textContent = err.message; }
   busy(false);
 });
@@ -1685,7 +1685,7 @@ $("uReset").onclick = async () => {
   if (!editing) return;
   busy(true);
   try{ A = await call("resetPassword", { username: editing.username }); renderAdmin();
-       $("userModal").classList.add("hidden"); showCredentials(A.credentials); }
+       $("userModal").classList.add("hidden"); if (A && A.credentials) showCredentials(A.credentials); }
   catch(err){ $("uErr").textContent = err.message; }
   busy(false);
 };
@@ -1754,7 +1754,7 @@ function bkRead(text){
   if (!rows.length) return [];
   const h = (rows[0] || []).map(c => String(c).trim().toLowerCase());
   const hit = re => h.findIndex(c => re.test(c));
-  let idx = { name: 0, first: -1, last: -1, phone: 1, branch: 2, join: 3, pan: -1, aadhaar: -1, sm: -1, cp: -1, loc: -1 }, body = rows;
+  let idx = { name: 0, first: -1, last: -1, phone: 1, branch: 2, join: 3, sm: 4, cp: 5, loc: 6, pan: -1, aadhaar: -1 }, body = rows;
   if (h.some(c => /name|caller|employee/.test(c)) && h.some(c => /phone|mobile|contact|number/.test(c))){
     idx = { name: hit(/^(full ?name|name|caller.*|employee.*)$/), first: hit(/first/), last: hit(/last|sur/),
             phone: hit(/^(phone|mobile|contact|number|phone no\.?|mobile no\.?)$/) >= 0 ? hit(/^(phone|mobile|contact|number|phone no\.?|mobile no\.?)$/) : hit(/phone|mobile|number/),
@@ -1787,6 +1787,9 @@ function bkCheckRows(list){
       : !r.last ? "Last name missing (first and last name needed)"
       : !/^[6-9]\d{9}$/.test(phone) ? "Phone is not a 10-digit mobile number"
       : !r.branch ? "Branch missing"
+      : !r.sm ? "SM missing"
+      : !r.cp ? "CP firm missing"
+      : !r.loc ? "Location missing"
       : (r.raw && !joining) ? "Joining date not understood"
       : exist[phone] ? "Already added as " + exist[phone]
       : seen[phone] ? "Same phone twice in this list"
