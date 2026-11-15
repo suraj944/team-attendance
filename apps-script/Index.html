@@ -131,6 +131,7 @@
   .fixgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
   .fixgrid label{margin-top:10px}
   .fixgrid input{background:#f3f6f5;color:#44524d;font-weight:600}
+  .fixgrid input.unset{background:var(--warn-bg);color:#8a5a00;font-weight:500;font-style:italic}
   @media (max-width:520px){ .fixgrid{grid-template-columns:1fr} }
   .quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
   .quick button{width:auto;margin:0;padding:6px 12px;font-size:13px;background:#eef2f0;color:var(--ink);border-radius:999px}
@@ -894,10 +895,9 @@ function startCaller(st){
   fill($("fCp"), [...cps, "Other…"], cps.includes(myCp) ? myCp : (myCp ? "Other…" : ""), "Select CP firm");
   if (myCp && !cps.includes(myCp)) $("fCpOther").value = myCp;
   // what the admin set is shown, not chosen
-  $("fxSm").value = fx.sm; $("fxCp").value = fx.cp; $("fxLoc").value = fx.loc; $("fxBranch").value = st.user.branch || "—";
-  $("smBox").classList.toggle("hidden", !!fx.sm);
-  $("cpBox").classList.toggle("hidden", !!fx.cp);
-  $("locBox").classList.toggle("hidden", !!fx.loc);
+  const show = (id, val) => { const el = $(id); el.value = val || "Not set"; el.classList.toggle("unset", !val); };
+  show("fxSm", fx.sm); show("fxCp", fx.cp); show("fxLoc", fx.loc); show("fxBranch", st.user.branch);
+  ["smBox", "cpBox", "locBox"].forEach(id => $(id).classList.add("hidden"));   // the admin sets these, never the caller
   setMode(st.today.login && !st.today.logout ? "logout" : "login");
 }
 
@@ -910,8 +910,7 @@ function setMode(m){
   $("tabLogin").classList.toggle("on", m === "login");
   $("tabLogout").classList.toggle("on", m === "logout");
   $("loginFields").classList.toggle("hidden", m !== "login");
-  const fx2 = (S && S.fixed) || {};
-  $("fixedBox").classList.toggle("hidden", !(m === "login" && (fx2.sm || fx2.cp || fx2.loc)));
+  $("fixedBox").classList.toggle("hidden", m !== "login");
   $("logoutFields").classList.toggle("hidden", m !== "logout");
   $("formErr").textContent = "";
   refresh();
@@ -950,9 +949,14 @@ function refresh(){
   } else if (mode === "logout" && !t.login){
     blocked = true; box.className = "alert warn";
     box.innerHTML = "<b>⚠️ Post your Login first</b>You can post the Logout only after today's Login.";
+  } else if (mode === "login" && missingFixed().length){
+    blocked = true; box.className = "alert warn";
+    box.innerHTML = "<b>⚠️ Your details are not set yet</b>Your admin has not set your <b>" + missingFixed().join("</b>, <b>") +
+      "</b>. Ask them to set it in the admin panel, then open this page again. You cannot post your Login until then.";
   }
   $("submitBtn").disabled = blocked && !posted;
-  $("submitBtn").textContent = blocked ? (posted ? "Open WhatsApp again" : "Login required first")
+  $("submitBtn").textContent = blocked ? (posted ? "Open WhatsApp again"
+      : (mode === "login" && missingFixed().length ? "Waiting for your admin" : "Login required first"))
     : "Submit " + (mode==="login"?"Login":"Logout") + " & open WhatsApp";
   ["fCp","fCpOther","fSm","fLoc","fLocOther","lHour","lMin","lAp","oHour","oMin","oAp",...LOGOUT_IDS].forEach(id => $(id).disabled = blocked);
   if (mode === "logout"){
@@ -981,6 +985,9 @@ function refresh(){
 }
 
 function fixedOf(k){ return ((S && S.fixed) || {})[k] || ""; }
+function missingFixed(){
+  return [["sm", "SM name"], ["cp", "CP firm"], ["loc", "Location"]].filter(x => !fixedOf(x[0])).map(x => x[1]);
+}
 function getLoc(){ return fixedOf("loc") || ($("fLoc").value === "Other…" ? v("fLocOther") : $("fLoc").value); }
 function getCp(){ return fixedOf("cp") || ($("fCp").value === "Other…" ? v("fCpOther") : $("fCp").value); }
 function getSm(){ return fixedOf("sm") || $("fSm").value; }
@@ -1041,6 +1048,7 @@ function validate(){
     if (!loginTimeText()) return "Please choose the login time (hour and minute).";
     const mins = (Number($("lHour").value) % 12 + ($("lAp").value === "PM" ? 12 : 0)) * 60 + Number($("lMin").value);
     if (mins > nowMinutes()) return "Login time cannot be in the future.";
+    if (missingFixed().length) return "Your admin has not set your " + missingFixed().join(", ") + " yet.";
     if (!getSm()) return "Please choose the SM.";
     if (!getCp()) return "Please choose the CP firm.";
     if (!getLoc()) return "Please enter the location.";

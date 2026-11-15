@@ -603,10 +603,14 @@ const API = {
         const mins = (h % 12 + (d.ap === 'PM' ? 12 : 0)) * 60 + m;
         if (mins > nowMinutes_()) throw new Error('Login time cannot be in the future.');
         rec.time = fmt12_(mins);
-        // whatever the admin saved on the caller wins; the page cannot override it
-        rec.sm = u.sm ? u.sm : String(d.sm || '').trim();
-        rec.cp = u.cp ? u.cp : String(d.cp || '').trim();
-        rec.loc = u.loc ? u.loc : String(d.loc || '').trim();
+        // only the admin sets these; a caller without them cannot post
+        const missing = [];
+        if (!u.sm) missing.push('SM name');
+        if (!u.cp) missing.push('CP firm');
+        if (!u.loc) missing.push('Location');
+        if (missing.length) throw new Error('Your admin has not set your ' + missing.join(', ') +
+          ' yet. Please ask your admin to set it in the admin panel.');
+        rec.sm = u.sm; rec.cp = u.cp; rec.loc = u.loc;
         if (!rec.sm) throw new Error('Please choose the SM.');
         if (!rec.cp) throw new Error('Please enter the CP firm.');
         if (!rec.loc) throw new Error('Please enter the location.');
