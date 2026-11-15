@@ -43,7 +43,7 @@ const COLS = {
   'Settings': ['Setting', 'Value', 'Description'],
 };
 const DATE_COLS = ['Date', 'Joining Date', 'Effective Date'];
-const NUM_COLS = ['Total Calls', 'Connect Calls', 'Connect %', 'Site Visit Done', 'Tomorrow Site Visit', 'Site Visit Confirmed WTD', 'Booking'];
+const NUM_COLS = ['Total Calls', 'Connect Calls', 'Connect %', 'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Site Visit Confirmed WTD', 'Booking'];
 const SUMMARY_ROWS = 300;     // employee rows prepared in "Employee Summary"
 
 /* ================= Web page ================= */
