@@ -27,7 +27,7 @@ function ss_() { return SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.
 
 const COLS = {
   'Employees': ['Employee ID', 'First Name', 'Last Name', 'Full Name', 'Phone', 'Branch', 'Joining Date',
-                'Role', 'Status', 'Created On', 'Password Hash'],
+                'Role', 'Status', 'Created On', 'Password Hash', 'PAN', 'Aadhaar', 'Alternate Contact'],
   'Attendance': ['Date', 'Day', 'Employee ID', 'Employee Name', 'Branch', 'SM', 'CP Firm', 'Location',
                  'Login Time', 'Late', 'Logout Time', 'Hours Worked', 'Total Calls', 'Connect Calls', 'Connect %',
                  'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Booking', 'Site Visit Confirmed WTD', 'Status',
@@ -391,6 +391,7 @@ function users_() {
              first: o['First Name'], last: o['Last Name'], phone: o['Phone'] || '', branch: o['Branch'], joining: o['Joining Date'],
              role: String(o['Role'] || 'Caller').toLowerCase() === 'admin' ? 'admin' : 'caller',
              active: String(o['Status'] || 'Active').toLowerCase() === 'inactive' ? 'no' : 'yes',
+             pan: o['PAN'] || '', aadhaar: o['Aadhaar'] || '', altPhone: o['Alternate Contact'] || '',
              created: o['Created On'], row: o._row, raw: o };
   }).filter(function (u) { return u.username; });
 }
@@ -398,8 +399,21 @@ function findUser_(username) {
   username = String(username || '').trim().toLowerCase();
   return users_().filter(function (u) { return u.username === username; })[0] || null;
 }
+/* The three optional ID fields. Blank is always allowed; a wrong-looking value is refused. */
+function idFields_(x) {
+  const pan = String(x.pan || '').trim().toUpperCase().replace(/\s+/g, '');
+  const aadhaar = String(x.aadhaar || '').replace(/\D/g, '');
+  let alt = String(x.altPhone || '').replace(/\D/g, '');
+  if (alt.length === 12 && alt.indexOf('91') === 0) alt = alt.slice(2);
+  if (alt.length === 11 && alt[0] === '0') alt = alt.slice(1);
+  if (pan && !/^[A-Z]{5}\d{4}[A-Z]$/.test(pan)) throw new Error('PAN should look like ABCDE1234F. Leave it blank if you do not have it.');
+  if (aadhaar && aadhaar.length !== 12) throw new Error('Aadhaar should be 12 digits. Leave it blank if you do not have it.');
+  if (alt && !/^[6-9]\d{9}$/.test(alt)) throw new Error('The alternate contact should be a 10-digit mobile number.');
+  return { 'PAN': pan, 'Aadhaar': aadhaar ? "'" + aadhaar : '', 'Alternate Contact': alt ? '+91 ' + alt : '' };
+}
 function publicUser_(u) {
-  return { username: u.username, name: u.name, phone: u.phone, branch: u.branch, joining: u.joining, role: u.role, active: u.active, created: u.created };
+  return { username: u.username, name: u.name, phone: u.phone, branch: u.branch, joining: u.joining, role: u.role,
+           active: u.active, created: u.created, pan: u.pan, aadhaar: u.aadhaar, altPhone: u.altPhone };
 }
 function newToken_(username) {
   const props = PropertiesService.getScriptProperties(), today = todayKey_(), all = props.getProperties();
@@ -735,15 +749,17 @@ const API = {
     const digits = phone;
     if (phone) phone = '+91 ' + phone;
 
+    const ids = idFields_(x);
     if (x.isNew) {
       if (role === 'caller' && !x.branch) throw new Error('Please choose the branch.');
       if (digits && users_().some(function (u) { return u.phone.replace(/\D/g, '').slice(-10) === digits; }))
         throw new Error('This phone number is already added for another caller.');
       const username = makeUsername_(name, digits);
       const password = makePassword_();
-      appendObj_('Employees', { 'Employee ID': username, 'First Name': first, 'Last Name': last, 'Full Name': name,
+      appendObj_('Employees', Object.assign({ 'Employee ID': username, 'First Name': first, 'Last Name': last, 'Full Name': name,
         'Phone': phone, 'Branch': x.branch || '', 'Joining Date': x.joining || '', 'Role': role === 'admin' ? 'Admin' : 'Caller',
-        'Status': active === 'no' ? 'Inactive' : 'Active', 'Created On': now_('yyyy-MM-dd HH:mm'), 'Password Hash': hash_(username, password) });
+        'Status': active === 'no' ? 'Inactive' : 'Active', 'Created On': now_('yyyy-MM-dd HH:mm'),
+        'Password Hash': hash_(username, password) }, idFields_(x)));
       const out = API.adminData(p);
       out.credentials = { name: name, username: username, password: password, phone: phone, isNew: true };
       return out;
@@ -757,7 +773,7 @@ const API = {
       throw new Error('This phone number is already added for another caller.');
     updateObj_('Employees', existing.row, Object.assign({}, existing.raw, { 'First Name': first, 'Last Name': last,
       'Full Name': name, 'Phone': phone, 'Joining Date': x.joining || '', 'Role': role === 'admin' ? 'Admin' : 'Caller',
-      'Status': active === 'no' ? 'Inactive' : 'Active' }));
+      'Status': active === 'no' ? 'Inactive' : 'Active' }, idFields_(x)));
     return API.adminData(p);
   },
 
@@ -804,9 +820,11 @@ const API = {
         taken[username] = true;
         phones[phone] = name;
         const password = makePassword_();
-        out.push(rowArr_(head, { 'Employee ID': username, 'First Name': first, 'Last Name': last, 'Full Name': name,
+        let extra = {};
+        try { extra = idFields_(r); } catch (e) { extra = {}; }     // a bad optional value is left out, the caller is still added
+        out.push(rowArr_(head, Object.assign({ 'Employee ID': username, 'First Name': first, 'Last Name': last, 'Full Name': name,
           'Phone': '+91 ' + phone, 'Branch': branch, 'Joining Date': joining, 'Role': 'Caller', 'Status': 'Active',
-          'Created On': stamp, 'Password Hash': hash_(username, password) }));
+          'Created On': stamp, 'Password Hash': hash_(username, password) }, extra)));
         added.push({ no: no, name: name, username: username, password: password, phone: '+91 ' + phone,
                      branch: branch, joining: joining });
       });

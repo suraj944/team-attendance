@@ -584,6 +584,18 @@
       <div id="uBranchBox"><label for="uBranch">Branch / project</label><select id="uBranch"></select></div>
       <div id="uBranchNow" class="hint hidden"></div>
       <label for="uJoin">Joining date <span style="font-weight:400;color:var(--muted)">(tap to open calendar)</span></label><input id="uJoin" type="date">
+      <details id="uIdBlock" style="margin:6px 0 10px">
+        <summary style="cursor:pointer;font-size:14px;font-weight:600;color:var(--brand)">Documents and emergency contact (optional)</summary>
+        <div style="margin-top:10px">
+          <div class="row">
+            <div><label for="uPan">PAN number</label><input id="uPan" placeholder="ABCDE1234F" maxlength="10" style="text-transform:uppercase"></div>
+            <div><label for="uAadhaar">Aadhaar number</label><input id="uAadhaar" inputmode="numeric" maxlength="14" placeholder="12 digits"></div>
+          </div>
+          <label for="uAlt">Alternate / emergency contact</label>
+          <div class="phone"><span>+91</span><input id="uAlt" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number"></div>
+          <p class="hint" style="text-align:left;margin-top:8px">All three can be left blank.</p>
+        </div>
+      </details>
       <div class="row">
         <div><label for="uRole">Role</label><select id="uRole"><option value="caller">Caller</option><option value="admin">Admin</option></select></div>
         <div><label for="uActive">Status</label><select id="uActive"><option value="yes">Active</option><option value="no">Inactive (left)</option></select></div>
@@ -1564,6 +1576,10 @@ function openUser(username){
   if (editing) $("uBranchNow").textContent = "Branch: " + (editing.branch || "—") + " (use “Change branch” to move)";
   $("uJoin").value = editing ? editing.joining : "";
   $("uJoin").max = A.today;
+  $("uPan").value = editing ? (editing.pan || "") : "";
+  $("uAadhaar").value = editing ? String(editing.aadhaar || "").replace(/\D/g, "") : "";
+  $("uAlt").value = editing ? String(editing.altPhone || "").replace(/\D/g, "").slice(-10) : "";
+  $("uIdBlock").open = !!(editing && (editing.pan || editing.aadhaar || editing.altPhone));
   $("uRole").value = editing ? editing.role : "caller";
   $("uActive").value = editing ? editing.active : "yes";
   $("uDelete").classList.toggle("hidden", !editing);
@@ -1573,7 +1589,8 @@ function openUser(username){
 $("userForm").addEventListener("submit", async e => {
   e.preventDefault();
   const user = { isNew: !editing, firstName: v("uFirst"), lastName: v("uLast"), phone: v("uPhone"), username: editing ? editing.username : "",
-    branch: $("uBranch").value, joining: $("uJoin").value, role: $("uRole").value, active: $("uActive").value };
+    branch: $("uBranch").value, joining: $("uJoin").value, role: $("uRole").value, active: $("uActive").value,
+    pan: v("uPan"), aadhaar: v("uAadhaar"), altPhone: v("uAlt") };
   busy(true);
   try{ A = await call("saveUser", { user }); renderAdmin(); $("userModal").classList.add("hidden");
        if (A.credentials) showCredentials(A.credentials); else toast("Saved"); }
@@ -1673,10 +1690,12 @@ function bkRead(text){
   if (!rows.length) return [];
   const h = (rows[0] || []).map(c => String(c).trim().toLowerCase());
   const hit = re => h.findIndex(c => re.test(c));
-  let idx = { name: 0, first: -1, last: -1, phone: 1, branch: 2, join: 3 }, body = rows;
+  let idx = { name: 0, first: -1, last: -1, phone: 1, branch: 2, join: 3, pan: -1, aadhaar: -1, alt: -1 }, body = rows;
   if (h.some(c => /name|caller|employee/.test(c)) && h.some(c => /phone|mobile|contact|number/.test(c))){
     idx = { name: hit(/^(full ?name|name|caller.*|employee.*)$/), first: hit(/first/), last: hit(/last|sur/),
-            phone: hit(/phone|mobile|contact|number/), branch: hit(/branch|project|site/), join: hit(/join|doj|date/) };
+            phone: hit(/^(phone|mobile|contact|number|phone no\.?|mobile no\.?)$/) >= 0 ? hit(/^(phone|mobile|contact|number|phone no\.?|mobile no\.?)$/) : hit(/phone|mobile|number/),
+            branch: hit(/branch|project|site/), join: hit(/join|doj|date/),
+            pan: hit(/pan/), aadhaar: hit(/aadhaar|aadhar|adhar/), alt: hit(/alternate|emergency|second/) };
     if (idx.first >= 0 || idx.last >= 0) idx.name = -1;
     body = rows.slice(1);
   }
@@ -1687,7 +1706,8 @@ function bkRead(text){
       const parts = g(idx.name).replace(/\s+/g, " ").trim().split(" ");
       first = parts[0] || ""; last = parts.slice(1).join(" ");
     }
-    return { no: i + 1, first, last, phone: g(idx.phone).replace(/\D/g, ""), branch: g(idx.branch), raw: g(idx.join) };
+    return { no: i + 1, first, last, phone: g(idx.phone).replace(/\D/g, ""), branch: g(idx.branch), raw: g(idx.join),
+             pan: g(idx.pan), aadhaar: g(idx.aadhaar), altPhone: g(idx.alt) };
   }).filter(r => r.first || r.last || r.phone);
 }
 function bkCheckRows(list){
@@ -1709,7 +1729,7 @@ function bkCheckRows(list){
     if (!err) seen[phone] = 1;
     const known = (A.branches || []).some(b => b.toLowerCase() === r.branch.toLowerCase());
     return { no: r.no, first: r.first, last: r.last, phone, branch: r.branch, joining, raw: r.raw, err,
-             newBranch: !err && !!r.branch && !known };
+             pan: r.pan, aadhaar: r.aadhaar, altPhone: r.altPhone, newBranch: !err && !!r.branch && !known };
   });
 }
 $("cBulk").onclick = () => {
@@ -1767,7 +1787,8 @@ function bkCheck(){
 $("bkCheck").onclick = bkCheck;
 $("bkAdd").onclick = async () => {
   if (!BK) return;
-  const rows = BK.filter(r => !r.err).map(r => ({ no: r.no, first: r.first, last: r.last, phone: r.phone, branch: r.branch, joining: r.joining }));
+  const rows = BK.filter(r => !r.err).map(r => ({ no: r.no, first: r.first, last: r.last, phone: r.phone, branch: r.branch,
+    joining: r.joining, pan: r.pan, aadhaar: r.aadhaar, altPhone: r.altPhone }));
   if (!rows.length) return;
   $("bkErr2").textContent = ""; busy(true);
   try{
