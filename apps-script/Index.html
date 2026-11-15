@@ -180,7 +180,9 @@
   .miss{color:var(--err);font-weight:600}
 
   /* tables */
-  .tablewrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:10px}
+  .tablewrap{overflow:auto;max-height:68vh;margin-top:12px;border:1px solid var(--line);border-radius:10px}
+  .tablewrap thead th{position:sticky;top:0;z-index:2}
+  .tablewrap table.reg th.nm{z-index:3}
   table{width:100%;border-collapse:collapse;font-size:14px}
   th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
   th{background:#f7f9f8;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
@@ -219,6 +221,24 @@
   #bkFile:focus + .filebtn,.filebtn:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px rgba(18,140,126,.15)}
   .colnote{margin:2px 0 0;font-size:12.5px;line-height:1.5;color:var(--muted);text-align:left}
   @media (max-width:560px){ .colrow .tag{width:100%} }
+  .gridtop{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:16px}
+  .gcount{font-size:12px;color:var(--muted)}
+  .xl{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;margin-top:6px}
+  .xlscroll{overflow:auto;max-height:46vh}
+  .xltab{border-collapse:separate;border-spacing:0;font-size:13px;min-width:900px;margin:0;width:auto}
+  .xltab th,.xltab td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0;white-space:nowrap}
+  .xltab th{background:#f7f9f8;font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);padding:8px 9px;text-align:left;position:sticky;top:0;z-index:2}
+  .req{color:var(--err)}
+  .xltab th.rn,.xltab td.rn{position:sticky;left:0;background:#f7f9f8;color:#9aa7a1;text-align:center;width:36px;min-width:36px;font-size:11px;padding:0;z-index:1}
+  .xltab th.rn{z-index:3}
+  .xltab td input{width:100%;box-sizing:border-box;border:0;background:transparent;height:36px;margin:0;padding:0 9px;font:inherit;font-size:13px;color:var(--ink);border-radius:0}
+  .xltab td input:focus{outline:none;box-shadow:inset 0 0 0 2px var(--brand);background:#fff}
+  .xltab tr:last-child td{border-bottom:0}
+  .xltab th:last-child,.xltab td:last-child{border-right:0}
+  .xlbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 10px;border-top:1px solid var(--line);background:#f7f9f8}
+  .xlbar button{width:auto;margin:0}
+  .ghint{font-size:12px;color:var(--muted);margin-left:auto}
+  @media (max-width:560px){ .ghint{display:none} }
   .bkrow td{font-size:13px}
   .bkrow.bad td{background:#fdeeee;color:#7a2a24}
   .bkrow.bad td:last-child{font-weight:600}
@@ -651,20 +671,22 @@
     <h2>Upload a list of callers</h2>
 
     <div id="bkStep1">
-      <p class="lead">Copy the rows from Excel and paste them below, or choose the file. A heading row is fine.</p>
-      <div class="colbox">
-        <div class="colrow"><span class="tag req">Required</span><span class="chip">Name</span><span class="chip">Phone</span><span class="chip">Branch</span><span class="chip">Joining date</span><span class="chip">SM</span><span class="chip">CP firm</span><span class="chip">Location</span></div>
-        <div class="colrow"><span class="tag opt">Optional</span><span class="chip">PAN</span><span class="chip">Aadhaar</span></div>
-        <p class="colnote">With a heading row the columns can be in any order. Without one, they must be in the order shown above.</p>
-      </div>
+      <p class="lead">Choose your Excel file, or type the rows into the grid below. You can also copy rows from Excel and paste them straight into a cell. Columns marked <b class="req">*</b> are needed; a file may have its heading row in any order.</p>
       <div class="row" style="margin-top:12px">
         <div><label for="bkFile">Excel or CSV file</label>
           <label class="filebtn" for="bkFile"><span>Choose file</span><em id="bkFileName">No file chosen</em></label>
           <input type="file" id="bkFile" accept=".xlsx,.xls,.csv" class="vhide"></div>
         <div><label>Not sure of the format?</label><button type="button" class="ghost" id="bkSample">Download a sample file</button></div>
       </div>
-      <label for="bkText">…or paste the rows here</label>
-      <textarea id="bkText" rows="7" placeholder="Name&#9;Phone&#9;Branch&#9;Joining date&#9;SM&#9;CP firm&#9;Location&#10;Vivek Jadhao&#9;9876543210&#9;Elements&#9;01-04-2026&#9;Aman Kamble&#9;Ghar Lo&#9;Seawoods"></textarea>
+      <div class="gridtop"><label style="margin:0">…or fill the rows here</label><span class="gcount" id="gCount">0 rows filled</span></div>
+      <div class="xl">
+        <div class="xlscroll"><table class="xltab" id="gTab"><thead><tr id="gHead"></tr></thead><tbody id="gBody"></tbody></table></div>
+        <div class="xlbar">
+          <button type="button" class="small ghost" id="gAdd">+ Add row</button>
+          <button type="button" class="small ghost" id="gClear">Clear</button>
+          <span class="ghint">Click a cell and paste from Excel — the rows spread across by themselves.</span>
+        </div>
+      </div>
       <button type="button" id="bkCheck">Check the list</button>
       <button type="button" class="ghost" data-close="bulkModal">Cancel</button>
       <div class="err" id="bkErr"></div>
@@ -1802,8 +1824,58 @@ function bkCheckRows(list){
              newBranch: !err && !!r.branch && !known };
   });
 }
+const GCOLS = [["Name", 1], ["Phone", 1], ["Branch", 1], ["Joining date", 1], ["SM", 1], ["CP firm", 1], ["Location", 1], ["PAN", 0], ["Aadhaar", 0]];
+const GKEYS = ["name", "phone", "branch", "raw", "sm", "cp", "loc", "pan", "aadhaar"];
+$("gHead").innerHTML = '<th class="rn"></th>' + GCOLS.map(c => "<th>" + c[0] + (c[1] ? ' <span class="req">*</span>' : "") + "</th>").join("");
+function gAddRow(vals){
+  const n = $("gBody").children.length + 1, tr = document.createElement("tr");
+  tr.innerHTML = '<td class="rn">' + n + "</td>" + GCOLS.map((c, j) =>
+    '<td><input aria-label="' + c[0] + " row " + n + '" value="' + esc((vals && vals[j]) || "") + '"></td>').join("");
+  $("gBody").appendChild(tr);
+  return tr;
+}
+function gRows(){ return [...$("gBody").children]; }
+function gCount(){
+  const n = gRows().filter(r => [...r.querySelectorAll("input")].some(i => i.value.trim())).length;
+  $("gCount").textContent = n + " row" + (n === 1 ? "" : "s") + " filled";
+}
+function gReset(rows){
+  $("gBody").innerHTML = "";
+  (rows || []).forEach(r => gAddRow(r));
+  while ($("gBody").children.length < Math.max(8, (rows || []).length + 2)) gAddRow();
+  gCount();
+}
+function gText(){     // the grid as the tab-separated text the checker reads
+  const lines = [GCOLS.map(c => c[0]).join("\t")];
+  gRows().forEach(r => {
+    const cells = [...r.querySelectorAll("input")].map(i => i.value.trim());
+    if (cells.some(Boolean)) lines.push(cells.join("\t"));
+  });
+  return lines.length > 1 ? lines.join("\n") : "";
+}
+function gFill(text){  // a pasted block or a file, mapped onto the grid's columns
+  const list = bkRead(text);
+  gReset(list.map(r => GKEYS.map(k => k === "name" ? (r.first + " " + r.last).trim() : (r[k] || ""))));
+  return list.length;
+}
+$("gAdd").onclick = () => { gAddRow(); gCount(); };
+$("gClear").onclick = () => gReset([]);
+$("gBody").addEventListener("input", gCount);
+$("gBody").addEventListener("paste", e => {
+  const txt = (e.clipboardData || window.clipboardData).getData("text");
+  if (!txt || (txt.indexOf("\t") < 0 && txt.indexOf("\n") < 0)) return;   // a single value pastes normally
+  e.preventDefault();
+  const cell = e.target.closest("td"), row = cell.parentElement;
+  const c0 = [...row.children].indexOf(cell) - 1, r0 = gRows().indexOf(row);
+  txt.replace(/\r/g, "").split("\n").filter(l => l.trim()).forEach((line, li) => {
+    while ($("gBody").children.length < r0 + li + 1) gAddRow();
+    const inputs = $("gBody").children[r0 + li].querySelectorAll("input");
+    line.split("\t").forEach((v, ci) => { if (inputs[c0 + ci]) inputs[c0 + ci].value = v.trim(); });
+  });
+  gCount();
+});
 $("cBulk").onclick = () => {
-  BK = null; $("bkText").value = ""; $("bkFile").value = ""; $("bkFileName").textContent = "No file chosen"; $("bkErr").textContent = ""; $("bkErr2").textContent = "";
+  BK = null; gReset([]); $("bkFile").value = ""; $("bkFileName").textContent = "No file chosen"; $("bkErr").textContent = ""; $("bkErr2").textContent = "";
   $("bkStep1").classList.remove("hidden"); $("bkStep2").classList.add("hidden"); $("bkStep3").classList.add("hidden");
   $("bulkModal").classList.remove("hidden");
 };
@@ -1826,21 +1898,24 @@ $("bkFile").onchange = async () => {
   if (!f) return;
   $("bkErr").textContent = ""; busy(true);
   try{
-    if (/\.csv$/i.test(f.name)) $("bkText").value = await f.text();
+    let text;
+    if (/\.csv$/i.test(f.name)) text = await f.text();
     else {
       const XLSX = await loadXLSX();
       const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: "array", cellDates: true, dateNF: "yyyy-mm-dd" });
       const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, dateNF: "yyyy-mm-dd", blankrows: false, defval: "" });
-      $("bkText").value = aoa.map(r => r.map(c => String(c == null ? "" : c)).join("\t")).join("\n");
+      text = aoa.map(r => r.map(c => String(c == null ? "" : c)).join("\t")).join("\n");
     }
+    const n = gFill(text);
+    if (!n) { $("bkErr").textContent = "No rows found in that file."; return; }
     bkCheck();
   }catch(e){ $("bkErr").textContent = "Could not read the file: " + e.message; }
   busy(false);
 };
 function bkCheck(){
   $("bkErr").textContent = "";
-  const list = bkRead($("bkText").value);
-  if (!list.length){ $("bkErr").textContent = "No rows found. Paste the rows or choose a file."; return; }
+  const list = bkRead(gText());
+  if (!list.length){ $("bkErr").textContent = "No rows yet. Fill the grid, paste from Excel, or choose a file."; return; }
   if (list.length > 300){ $("bkErr").textContent = "Too many rows at once (" + list.length + "). Please upload up to 300 at a time."; return; }
   BK = bkCheckRows(list);
   const ok = BK.filter(r => !r.err), bad = BK.filter(r => r.err);
