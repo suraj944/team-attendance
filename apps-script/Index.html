@@ -128,6 +128,10 @@
   .rc.M{background:#fbe3d6;color:#7a3210} .rc.A{background:var(--bad-bg);color:var(--bad-ink)}
   .rc.WO{background:#eef2f0;color:var(--muted)} .rc.X{color:#b9c3be}
   .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px;align-items:center}
+  .fixgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+  .fixgrid label{margin-top:10px}
+  .fixgrid input{background:#f3f6f5;color:#44524d;font-weight:600}
+  @media (max-width:520px){ .fixgrid{grid-template-columns:1fr} }
   .quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
   .quick button{width:auto;margin:0;padding:6px 12px;font-size:13px;background:#eef2f0;color:var(--ink);border-radius:999px}
   .quick button:hover{background:#dfe7e3}
@@ -329,16 +333,31 @@
     <label>Caller name</label>
     <input id="fCaller" readonly>
 
-    <label for="fSm">SM name <span id="smLock" class="hidden" style="font-weight:400;color:var(--muted)">🔒 from today's Login</span></label>
-    <select id="fSm"></select>
+    <div id="smBox">
+      <label for="fSm">SM name <span id="smLock" class="hidden" style="font-weight:400;color:var(--muted)">🔒 from today's Login</span></label>
+      <select id="fSm"></select>
+    </div>
 
     <div id="loginFields">
-      <label for="fCp">CP firm</label>
-      <select id="fCp"></select>
-      <input id="fCpOther" class="hidden" placeholder="Type CP firm" style="margin-top:8px">
-      <label for="fLoc">Location</label>
-      <select id="fLoc"></select>
-      <input id="fLocOther" class="hidden" placeholder="Type location" style="margin-top:8px">
+      <div id="cpBox">
+        <label for="fCp">CP firm</label>
+        <select id="fCp"></select>
+        <input id="fCpOther" class="hidden" placeholder="Type CP firm" style="margin-top:8px">
+      </div>
+      <div id="locBox">
+        <label for="fLoc">Location</label>
+        <select id="fLoc"></select>
+        <input id="fLocOther" class="hidden" placeholder="Type location" style="margin-top:8px">
+      </div>
+    </div>
+    <div id="fixedBox" class="hidden">
+      <div class="fixgrid">
+        <div><label>SM name</label><input id="fxSm" readonly></div>
+        <div><label>CP firm</label><input id="fxCp" readonly></div>
+        <div><label>Location</label><input id="fxLoc" readonly></div>
+        <div style="grid-column:1/-1"><label>Branch</label><input id="fxBranch" readonly></div>
+      </div>
+      <p class="hint" style="text-align:left;margin:8px 0 2px">Set by your admin. Ask them if any of this is wrong.</p>
     </div>
 
     <div id="logoutFields" class="hidden">
@@ -600,7 +619,8 @@
         <div><label for="uSm">SM name</label><select id="uSm"></select></div>
         <div><label for="uCp">CP firm</label><select id="uCp"></select></div>
       </div>
-      <p class="hint" style="text-align:left;margin:-4px 0 10px">Filled in for the caller every day. They can still change it.</p>
+      <label for="uLoc">Location</label><select id="uLoc"></select>
+      <p class="hint" style="text-align:left;margin:8px 0 12px">Filled in on the caller's Login every day. Only you can change these three.</p>
       <div id="uBranchNow" class="hint hidden"></div>
       <label for="uJoin">Joining date <span style="font-weight:400;color:var(--muted)">(tap to open calendar)</span></label><input id="uJoin" type="date">
       <details id="uIdBlock" style="margin:6px 0 10px">
@@ -633,7 +653,7 @@
       <p class="lead">Copy the rows from Excel and paste them below, or choose the file. A heading row is fine.</p>
       <div class="colbox">
         <div class="colrow"><span class="tag req">Required</span><span class="chip">Name</span><span class="chip">Phone</span><span class="chip">Branch</span><span class="chip">Joining date</span></div>
-        <div class="colrow"><span class="tag opt">Optional</span><span class="chip">SM</span><span class="chip">CP firm</span><span class="chip">PAN</span><span class="chip">Aadhaar</span></div>
+        <div class="colrow"><span class="tag opt">Optional</span><span class="chip">SM</span><span class="chip">CP firm</span><span class="chip">Location</span><span class="chip">PAN</span><span class="chip">Aadhaar</span></div>
         <p class="colnote">Without a heading row, keep the four required columns in that order. With one, the columns can be in any order.</p>
       </div>
       <div class="row" style="margin-top:12px">
@@ -867,11 +887,17 @@ function startCaller(st){
   $("whoBranch").textContent = st.user.branch || "";
   $("fCaller").value = st.user.name;
   const last = JSON.parse(store.get("att_last_" + st.user.username) || "{}");
-  fill($("fSm"), st.config.sms, last.sm || (st.defaults || {}).sm || "", "Select SM");
+  const fx = st.fixed || {};
+  fill($("fSm"), st.config.sms, last.sm || "", "Select SM");
   fill($("fLoc"), [...st.config.locations, "Other…"], last.loc || st.config.locations[0]);
-  const cps = st.config.cpFirms || [], myCp = last.cp || (st.defaults || {}).cp || "";
+  const cps = st.config.cpFirms || [], myCp = last.cp || "";
   fill($("fCp"), [...cps, "Other…"], cps.includes(myCp) ? myCp : (myCp ? "Other…" : ""), "Select CP firm");
   if (myCp && !cps.includes(myCp)) $("fCpOther").value = myCp;
+  // what the admin set is shown, not chosen
+  $("fxSm").value = fx.sm; $("fxCp").value = fx.cp; $("fxLoc").value = fx.loc; $("fxBranch").value = st.user.branch || "—";
+  $("smBox").classList.toggle("hidden", !!fx.sm);
+  $("cpBox").classList.toggle("hidden", !!fx.cp);
+  $("locBox").classList.toggle("hidden", !!fx.loc);
   setMode(st.today.login && !st.today.logout ? "logout" : "login");
 }
 
@@ -884,6 +910,8 @@ function setMode(m){
   $("tabLogin").classList.toggle("on", m === "login");
   $("tabLogout").classList.toggle("on", m === "logout");
   $("loginFields").classList.toggle("hidden", m !== "login");
+  const fx2 = (S && S.fixed) || {};
+  $("fixedBox").classList.toggle("hidden", !(m === "login" && (fx2.sm || fx2.cp || fx2.loc)));
   $("logoutFields").classList.toggle("hidden", m !== "logout");
   $("formErr").textContent = "";
   refresh();
@@ -952,8 +980,10 @@ function refresh(){
   renderHistory();
 }
 
-function getLoc(){ return $("fLoc").value === "Other…" ? v("fLocOther") : $("fLoc").value; }
-function getCp(){ return $("fCp").value === "Other…" ? v("fCpOther") : $("fCp").value; }
+function fixedOf(k){ return ((S && S.fixed) || {})[k] || ""; }
+function getLoc(){ return fixedOf("loc") || ($("fLoc").value === "Other…" ? v("fLocOther") : $("fLoc").value); }
+function getCp(){ return fixedOf("cp") || ($("fCp").value === "Other…" ? v("fCpOther") : $("fCp").value); }
+function getSm(){ return fixedOf("sm") || $("fSm").value; }
 function setLogoutTime(mins){
   const h = Math.floor(mins / 60);
   $("oHour").value = String(h % 12 || 12);
@@ -979,7 +1009,7 @@ function buildMessage(){
     "Date : " + date,
     "Caller name : " + S.user.name,
     "Cp firm : " + getCp(),
-    "SM :  " + $("fSm").value,
+    "SM :  " + getSm(),
     "Location:  " + getLoc(),
     "Login time :" + loginTimeText(),
   ].join("\n");
@@ -1011,7 +1041,7 @@ function validate(){
     if (!loginTimeText()) return "Please choose the login time (hour and minute).";
     const mins = (Number($("lHour").value) % 12 + ($("lAp").value === "PM" ? 12 : 0)) * 60 + Number($("lMin").value);
     if (mins > nowMinutes()) return "Login time cannot be in the future.";
-    if (!$("fSm").value) return "Please choose the SM.";
+    if (!getSm()) return "Please choose the SM.";
     if (!getCp()) return "Please choose the CP firm.";
     if (!getLoc()) return "Please enter the location.";
     return "";
@@ -1044,7 +1074,7 @@ $("attForm").addEventListener("submit", e => {
   }
   const err = validate(); $("formErr").textContent = err; if (err) return;
   pending = mode === "login"
-    ? { type:"login", data:{ hour:$("lHour").value, min:$("lMin").value, ap:$("lAp").value, sm:$("fSm").value, cp:getCp(), loc:getLoc() } }
+    ? { type:"login", data:{ hour:$("lHour").value, min:$("lMin").value, ap:$("lAp").value, sm:getSm(), cp:getCp(), loc:getLoc() } }
     : { type:"logout", data:{ hour:$("oHour").value, min:$("oMin").value, ap:$("oAp").value, total:v("oTotal"), connect:v("oConnect"), lead:v("oLead"), visitToday:v("oVisitToday"), visitTom:v("oVisitTom"), booking:v("oBooking"), wtd:v("oWtd") } };
   $("cTitle").textContent = "Confirm your " + (mode === "login" ? "Login" : "Logout");
   $("cMsg").textContent = buildMessage();
@@ -1597,6 +1627,7 @@ function openUser(username){
   fill($("uBranch"), A.branches, "", "Select branch");
   fill($("uSm"), A.sms, editing ? (editing.sm || "") : "", "Not set");
   fill($("uCp"), A.cpFirms || [], editing ? (editing.cp || "") : "", "Not set");
+  fill($("uLoc"), A.locations, editing ? (editing.loc || "") : "", "Not set");
   $("uBranchBox").classList.toggle("hidden", !!editing);
   $("uBranchNow").classList.toggle("hidden", !editing);
   if (editing) $("uBranchNow").textContent = "Branch: " + (editing.branch || "—") + " (use “Change branch” to move)";
@@ -1615,7 +1646,7 @@ $("userForm").addEventListener("submit", async e => {
   e.preventDefault();
   const user = { isNew: !editing, firstName: v("uFirst"), lastName: v("uLast"), phone: v("uPhone"), username: editing ? editing.username : "",
     branch: $("uBranch").value, joining: $("uJoin").value, role: $("uRole").value, active: $("uActive").value,
-    pan: v("uPan"), aadhaar: v("uAadhaar"), sm: $("uSm").value, cp: $("uCp").value };
+    pan: v("uPan"), aadhaar: v("uAadhaar"), sm: $("uSm").value, cp: $("uCp").value, loc: $("uLoc").value };
   busy(true);
   try{ A = await call("saveUser", { user }); renderAdmin(); $("userModal").classList.add("hidden");
        if (A.credentials) showCredentials(A.credentials); else toast("Saved"); }
@@ -1715,13 +1746,13 @@ function bkRead(text){
   if (!rows.length) return [];
   const h = (rows[0] || []).map(c => String(c).trim().toLowerCase());
   const hit = re => h.findIndex(c => re.test(c));
-  let idx = { name: 0, first: -1, last: -1, phone: 1, branch: 2, join: 3, pan: -1, aadhaar: -1, sm: -1, cp: -1 }, body = rows;
+  let idx = { name: 0, first: -1, last: -1, phone: 1, branch: 2, join: 3, pan: -1, aadhaar: -1, sm: -1, cp: -1, loc: -1 }, body = rows;
   if (h.some(c => /name|caller|employee/.test(c)) && h.some(c => /phone|mobile|contact|number/.test(c))){
     idx = { name: hit(/^(full ?name|name|caller.*|employee.*)$/), first: hit(/first/), last: hit(/last|sur/),
             phone: hit(/^(phone|mobile|contact|number|phone no\.?|mobile no\.?)$/) >= 0 ? hit(/^(phone|mobile|contact|number|phone no\.?|mobile no\.?)$/) : hit(/phone|mobile|number/),
             branch: hit(/branch|project|site/), join: hit(/join|doj|date/),
             pan: hit(/pan/), aadhaar: hit(/aadhaar|aadhar|adhar/),
-            sm: hit(/^sm\b|sm name|manager/), cp: hit(/cp/) };
+            sm: hit(/^sm\b|sm name|manager/), cp: hit(/cp/), loc: hit(/location|area|site(?!.*visit)/) };
     if (idx.first >= 0 || idx.last >= 0) idx.name = -1;
     body = rows.slice(1);
   }
@@ -1733,7 +1764,7 @@ function bkRead(text){
       first = parts[0] || ""; last = parts.slice(1).join(" ");
     }
     return { no: i + 1, first, last, phone: g(idx.phone).replace(/\D/g, ""), branch: g(idx.branch), raw: g(idx.join),
-             pan: g(idx.pan), aadhaar: g(idx.aadhaar), sm: g(idx.sm), cp: g(idx.cp) };
+             pan: g(idx.pan), aadhaar: g(idx.aadhaar), sm: g(idx.sm), cp: g(idx.cp), loc: g(idx.loc) };
   }).filter(r => r.first || r.last || r.phone);
 }
 function bkCheckRows(list){
@@ -1755,7 +1786,7 @@ function bkCheckRows(list){
     if (!err) seen[phone] = 1;
     const known = (A.branches || []).some(b => b.toLowerCase() === r.branch.toLowerCase());
     return { no: r.no, first: r.first, last: r.last, phone, branch: r.branch, joining, raw: r.raw, err,
-             pan: r.pan, aadhaar: r.aadhaar, sm: r.sm, cp: r.cp,
+             pan: r.pan, aadhaar: r.aadhaar, sm: r.sm, cp: r.cp, loc: r.loc,
              newBranch: !err && !!r.branch && !known };
   });
 }
@@ -1769,9 +1800,10 @@ $("bkClose").onclick = () => $("bulkModal").classList.add("hidden");
 $("bkSample").onclick = () => {
   const b = (A.branches || [])[0] || "Branch name";
   const sm = (A.sms || [])[0] || "SM name", cp = (A.cpFirms || [])[0] || "CP firm";
-  const csv = "Name,Phone,Branch,Joining date,SM,CP firm,PAN,Aadhaar\n" +
-    "Vivek Jadhao,9876543210," + b + ",01-04-2026," + sm + "," + cp + ",ABCDE1234F,\n" +
-    "Priya Shah,9876501234," + b + ",15-04-2026," + sm + "," + cp + ",,\n";
+  const lo = (A.locations || [])[0] || "On Site";
+  const csv = "Name,Phone,Branch,Joining date,SM,CP firm,Location,PAN,Aadhaar\n" +
+    "Vivek Jadhao,9876543210," + b + ",01-04-2026," + sm + "," + cp + "," + lo + ",ABCDE1234F,\n" +
+    "Priya Shah,9876501234," + b + ",15-04-2026," + sm + "," + cp + "," + lo + ",,\n";
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   a.download = "callers_sample.csv"; document.body.appendChild(a); a.click(); a.remove();
@@ -1822,7 +1854,7 @@ $("bkCheck").onclick = bkCheck;
 $("bkAdd").onclick = async () => {
   if (!BK) return;
   const rows = BK.filter(r => !r.err).map(r => ({ no: r.no, first: r.first, last: r.last, phone: r.phone, branch: r.branch,
-    joining: r.joining, pan: r.pan, aadhaar: r.aadhaar, sm: r.sm, cp: r.cp }));
+    joining: r.joining, pan: r.pan, aadhaar: r.aadhaar, sm: r.sm, cp: r.cp, loc: r.loc }));
   if (!rows.length) return;
   $("bkErr2").textContent = ""; busy(true);
   try{

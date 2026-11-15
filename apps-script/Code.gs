@@ -27,7 +27,7 @@ function ss_() { return SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.
 
 const COLS = {
   'Employees': ['Employee ID', 'First Name', 'Last Name', 'Full Name', 'Phone', 'Branch', 'Joining Date',
-                'Role', 'Status', 'Created On', 'Password Hash', 'PAN', 'Aadhaar', 'SM', 'CP Firm'],
+                'Role', 'Status', 'Created On', 'Password Hash', 'PAN', 'Aadhaar', 'SM', 'CP Firm', 'Location'],
   'Attendance': ['Date', 'Day', 'Employee ID', 'Employee Name', 'Branch', 'SM', 'CP Firm', 'Location',
                  'Login Time', 'Late', 'Logout Time', 'Hours Worked', 'Total Calls', 'Connect Calls', 'Connect %',
                  'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Booking', 'Site Visit Confirmed WTD', 'Status',
@@ -392,7 +392,7 @@ function users_() {
              role: String(o['Role'] || 'Caller').toLowerCase() === 'admin' ? 'admin' : 'caller',
              active: String(o['Status'] || 'Active').toLowerCase() === 'inactive' ? 'no' : 'yes',
              pan: o['PAN'] || '', aadhaar: o['Aadhaar'] || '',
-             sm: o['SM'] || '', cp: o['CP Firm'] || '',
+             sm: o['SM'] || '', cp: o['CP Firm'] || '', loc: o['Location'] || '',
              created: o['Created On'], row: o._row, raw: o };
   }).filter(function (u) { return u.username; });
 }
@@ -406,12 +406,12 @@ function idFields_(x) {
   const aadhaar = String(x.aadhaar || '').replace(/\D/g, '');
   if (pan && !/^[A-Z]{5}\d{4}[A-Z]$/.test(pan)) throw new Error('PAN should look like ABCDE1234F. Leave it blank if you do not have it.');
   if (aadhaar && aadhaar.length !== 12) throw new Error('Aadhaar should be 12 digits. Leave it blank if you do not have it.');
-  return { 'PAN': pan, 'Aadhaar': aadhaar ? "'" + aadhaar : '',
-           'SM': String(x.sm || '').trim(), 'CP Firm': String(x.cp || '').trim() };
+  return { 'PAN': pan, 'Aadhaar': aadhaar ? "'" + aadhaar : '', 'SM': String(x.sm || '').trim(),
+           'CP Firm': String(x.cp || '').trim(), 'Location': String(x.loc || '').trim() };
 }
 function publicUser_(u) {
   return { username: u.username, name: u.name, phone: u.phone, branch: u.branch, joining: u.joining, role: u.role,
-           active: u.active, created: u.created, pan: u.pan, aadhaar: u.aadhaar, sm: u.sm, cp: u.cp };
+           active: u.active, created: u.created, pan: u.pan, aadhaar: u.aadhaar, sm: u.sm, cp: u.cp, loc: u.loc };
 }
 function newToken_(username) {
   const props = PropertiesService.getScriptProperties(), today = todayKey_(), all = props.getProperties();
@@ -543,7 +543,7 @@ function callerState_(u) {
       return { date: d, login: byDay[d].login ? byDay[d].login.time : '', logout: byDay[d].logout ? byDay[d].logout.time : '' };
     }),
     config: { sms: list_('SMs'), locations: list_('Locations'), cpFirms: list_('CP Firms'), reminderAt: setting_('Logout reminder time', '19:00') },
-    defaults: { sm: u.sm || '', cp: u.cp || '' },
+    fixed: { sm: u.sm || '', cp: u.cp || '', loc: u.loc || '' },   // set by the admin; the caller cannot change these
     serverMinutes: nowMinutes_(),
     requestable: requestableDays_(u, byDay, days, today),
     requests: requests_().filter(function (r) { return r.username === u.username; }).slice(-10).reverse().map(function (r) {
@@ -603,9 +603,10 @@ const API = {
         const mins = (h % 12 + (d.ap === 'PM' ? 12 : 0)) * 60 + m;
         if (mins > nowMinutes_()) throw new Error('Login time cannot be in the future.');
         rec.time = fmt12_(mins);
-        rec.sm = String(d.sm || '').trim();
-        rec.cp = String(d.cp || '').trim();
-        rec.loc = String(d.loc || '').trim();
+        // whatever the admin saved on the caller wins; the page cannot override it
+        rec.sm = u.sm ? u.sm : String(d.sm || '').trim();
+        rec.cp = u.cp ? u.cp : String(d.cp || '').trim();
+        rec.loc = u.loc ? u.loc : String(d.loc || '').trim();
         if (!rec.sm) throw new Error('Please choose the SM.');
         if (!rec.cp) throw new Error('Please enter the CP firm.');
         if (!rec.loc) throw new Error('Please enter the location.');
