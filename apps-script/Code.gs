@@ -27,7 +27,7 @@ function ss_() { return SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.
 
 const COLS = {
   'Employees': ['Employee ID', 'First Name', 'Last Name', 'Full Name', 'Phone', 'Branch', 'Joining Date',
-                'Role', 'Status', 'Created On', 'Password Hash', 'PAN', 'Aadhaar', 'Alternate Contact'],
+                'Role', 'Status', 'Created On', 'Password Hash', 'PAN', 'Aadhaar', 'Alternate Contact', 'SM', 'CP Firm'],
   'Attendance': ['Date', 'Day', 'Employee ID', 'Employee Name', 'Branch', 'SM', 'CP Firm', 'Location',
                  'Login Time', 'Late', 'Logout Time', 'Hours Worked', 'Total Calls', 'Connect Calls', 'Connect %',
                  'Lead of the Day', 'Site Visit Done', 'Tomorrow Site Visit', 'Booking', 'Site Visit Confirmed WTD', 'Status',
@@ -392,6 +392,7 @@ function users_() {
              role: String(o['Role'] || 'Caller').toLowerCase() === 'admin' ? 'admin' : 'caller',
              active: String(o['Status'] || 'Active').toLowerCase() === 'inactive' ? 'no' : 'yes',
              pan: o['PAN'] || '', aadhaar: o['Aadhaar'] || '', altPhone: o['Alternate Contact'] || '',
+             sm: o['SM'] || '', cp: o['CP Firm'] || '',
              created: o['Created On'], row: o._row, raw: o };
   }).filter(function (u) { return u.username; });
 }
@@ -409,11 +410,13 @@ function idFields_(x) {
   if (pan && !/^[A-Z]{5}\d{4}[A-Z]$/.test(pan)) throw new Error('PAN should look like ABCDE1234F. Leave it blank if you do not have it.');
   if (aadhaar && aadhaar.length !== 12) throw new Error('Aadhaar should be 12 digits. Leave it blank if you do not have it.');
   if (alt && !/^[6-9]\d{9}$/.test(alt)) throw new Error('The alternate contact should be a 10-digit mobile number.');
-  return { 'PAN': pan, 'Aadhaar': aadhaar ? "'" + aadhaar : '', 'Alternate Contact': alt ? '+91 ' + alt : '' };
+  return { 'PAN': pan, 'Aadhaar': aadhaar ? "'" + aadhaar : '', 'Alternate Contact': alt ? '+91 ' + alt : '',
+           'SM': String(x.sm || '').trim(), 'CP Firm': String(x.cp || '').trim() };
 }
 function publicUser_(u) {
   return { username: u.username, name: u.name, phone: u.phone, branch: u.branch, joining: u.joining, role: u.role,
-           active: u.active, created: u.created, pan: u.pan, aadhaar: u.aadhaar, altPhone: u.altPhone };
+           active: u.active, created: u.created, pan: u.pan, aadhaar: u.aadhaar, altPhone: u.altPhone,
+           sm: u.sm, cp: u.cp };
 }
 function newToken_(username) {
   const props = PropertiesService.getScriptProperties(), today = todayKey_(), all = props.getProperties();
@@ -545,6 +548,7 @@ function callerState_(u) {
       return { date: d, login: byDay[d].login ? byDay[d].login.time : '', logout: byDay[d].logout ? byDay[d].logout.time : '' };
     }),
     config: { sms: list_('SMs'), locations: list_('Locations'), cpFirms: list_('CP Firms'), reminderAt: setting_('Logout reminder time', '19:00') },
+    defaults: { sm: u.sm || '', cp: u.cp || '' },
     serverMinutes: nowMinutes_(),
     requestable: requestableDays_(u, byDay, days, today),
     requests: requests_().filter(function (r) { return r.username === u.username; }).slice(-10).reverse().map(function (r) {

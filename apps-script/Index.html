@@ -582,6 +582,11 @@
       </div>
       <div id="uAutoNote" class="alert ok" style="font-size:13px">🔑 Login ID and password will be created automatically after you press Save.</div>
       <div id="uBranchBox"><label for="uBranch">Branch / project</label><select id="uBranch"></select></div>
+      <div class="row">
+        <div><label for="uSm">SM name</label><select id="uSm"></select></div>
+        <div><label for="uCp">CP firm</label><select id="uCp"></select></div>
+      </div>
+      <p class="hint" style="text-align:left;margin:-4px 0 10px">Filled in for the caller every day. They can still change it.</p>
       <div id="uBranchNow" class="hint hidden"></div>
       <label for="uJoin">Joining date <span style="font-weight:400;color:var(--muted)">(tap to open calendar)</span></label><input id="uJoin" type="date">
       <details id="uIdBlock" style="margin:6px 0 10px">
@@ -614,12 +619,13 @@
 
     <div id="bkStep1">
       <p>Four columns in this order: <b>Name, Phone, Branch, Joining date</b>. A heading row is fine. Copy the rows from Excel and paste them below, or choose the file.</p>
+      <p class="hint" style="text-align:left;margin-top:-6px">With a heading row you can add more columns in any order: <b>SM, CP firm, PAN, Aadhaar, Alternate contact</b>. They are all optional.</p>
       <div class="row" style="margin-top:12px">
         <div><label for="bkFile">Excel or CSV file</label><input type="file" id="bkFile" accept=".xlsx,.xls,.csv"></div>
         <div><label>Not sure of the format?</label><button type="button" class="ghost" id="bkSample">Download a sample file</button></div>
       </div>
       <label for="bkText">…or paste the rows here</label>
-      <textarea id="bkText" rows="7" placeholder="Name&#9;Phone&#9;Branch&#9;Joining date&#10;Vivek Jadhao&#9;9876543210&#9;Elements Callers&#9;01-04-2026"></textarea>
+      <textarea id="bkText" rows="7" placeholder="Name&#9;Phone&#9;Branch&#9;Joining date&#9;SM&#9;CP firm&#10;Vivek Jadhao&#9;9876543210&#9;Elements&#9;01-04-2026&#9;Aman Kamble&#9;Ghar Lo"></textarea>
       <button type="button" id="bkCheck">Check the list</button>
       <button type="button" class="ghost" data-close="bulkModal">Cancel</button>
       <div class="err" id="bkErr"></div>
@@ -843,11 +849,11 @@ function startCaller(st){
   $("whoBranch").textContent = st.user.branch || "";
   $("fCaller").value = st.user.name;
   const last = JSON.parse(store.get("att_last_" + st.user.username) || "{}");
-  fill($("fSm"), st.config.sms, last.sm || "", "Select SM");
+  fill($("fSm"), st.config.sms, last.sm || (st.defaults || {}).sm || "", "Select SM");
   fill($("fLoc"), [...st.config.locations, "Other…"], last.loc || st.config.locations[0]);
-  const cps = st.config.cpFirms || [];
-  fill($("fCp"), [...cps, "Other…"], cps.includes(last.cp) ? last.cp : (last.cp ? "Other…" : ""), "Select CP firm");
-  if (last.cp && !cps.includes(last.cp)) $("fCpOther").value = last.cp;
+  const cps = st.config.cpFirms || [], myCp = last.cp || (st.defaults || {}).cp || "";
+  fill($("fCp"), [...cps, "Other…"], cps.includes(myCp) ? myCp : (myCp ? "Other…" : ""), "Select CP firm");
+  if (myCp && !cps.includes(myCp)) $("fCpOther").value = myCp;
   setMode(st.today.login && !st.today.logout ? "logout" : "login");
 }
 
@@ -1571,6 +1577,8 @@ function openUser(username){
   $("uIdBox").classList.toggle("hidden", !editing);
   $("uAutoNote").classList.toggle("hidden", !!editing);
   fill($("uBranch"), A.branches, "", "Select branch");
+  fill($("uSm"), A.sms, editing ? (editing.sm || "") : "", "Not set");
+  fill($("uCp"), A.cpFirms || [], editing ? (editing.cp || "") : "", "Not set");
   $("uBranchBox").classList.toggle("hidden", !!editing);
   $("uBranchNow").classList.toggle("hidden", !editing);
   if (editing) $("uBranchNow").textContent = "Branch: " + (editing.branch || "—") + " (use “Change branch” to move)";
@@ -1590,7 +1598,7 @@ $("userForm").addEventListener("submit", async e => {
   e.preventDefault();
   const user = { isNew: !editing, firstName: v("uFirst"), lastName: v("uLast"), phone: v("uPhone"), username: editing ? editing.username : "",
     branch: $("uBranch").value, joining: $("uJoin").value, role: $("uRole").value, active: $("uActive").value,
-    pan: v("uPan"), aadhaar: v("uAadhaar"), altPhone: v("uAlt") };
+    pan: v("uPan"), aadhaar: v("uAadhaar"), altPhone: v("uAlt"), sm: $("uSm").value, cp: $("uCp").value };
   busy(true);
   try{ A = await call("saveUser", { user }); renderAdmin(); $("userModal").classList.add("hidden");
        if (A.credentials) showCredentials(A.credentials); else toast("Saved"); }
@@ -1690,12 +1698,13 @@ function bkRead(text){
   if (!rows.length) return [];
   const h = (rows[0] || []).map(c => String(c).trim().toLowerCase());
   const hit = re => h.findIndex(c => re.test(c));
-  let idx = { name: 0, first: -1, last: -1, phone: 1, branch: 2, join: 3, pan: -1, aadhaar: -1, alt: -1 }, body = rows;
+  let idx = { name: 0, first: -1, last: -1, phone: 1, branch: 2, join: 3, pan: -1, aadhaar: -1, alt: -1, sm: -1, cp: -1 }, body = rows;
   if (h.some(c => /name|caller|employee/.test(c)) && h.some(c => /phone|mobile|contact|number/.test(c))){
     idx = { name: hit(/^(full ?name|name|caller.*|employee.*)$/), first: hit(/first/), last: hit(/last|sur/),
             phone: hit(/^(phone|mobile|contact|number|phone no\.?|mobile no\.?)$/) >= 0 ? hit(/^(phone|mobile|contact|number|phone no\.?|mobile no\.?)$/) : hit(/phone|mobile|number/),
             branch: hit(/branch|project|site/), join: hit(/join|doj|date/),
-            pan: hit(/pan/), aadhaar: hit(/aadhaar|aadhar|adhar/), alt: hit(/alternate|emergency|second/) };
+            pan: hit(/pan/), aadhaar: hit(/aadhaar|aadhar|adhar/), alt: hit(/alternate|emergency|second/),
+            sm: hit(/^sm\b|sm name|manager/), cp: hit(/cp/) };
     if (idx.first >= 0 || idx.last >= 0) idx.name = -1;
     body = rows.slice(1);
   }
@@ -1707,7 +1716,7 @@ function bkRead(text){
       first = parts[0] || ""; last = parts.slice(1).join(" ");
     }
     return { no: i + 1, first, last, phone: g(idx.phone).replace(/\D/g, ""), branch: g(idx.branch), raw: g(idx.join),
-             pan: g(idx.pan), aadhaar: g(idx.aadhaar), altPhone: g(idx.alt) };
+             pan: g(idx.pan), aadhaar: g(idx.aadhaar), altPhone: g(idx.alt), sm: g(idx.sm), cp: g(idx.cp) };
   }).filter(r => r.first || r.last || r.phone);
 }
 function bkCheckRows(list){
@@ -1729,7 +1738,8 @@ function bkCheckRows(list){
     if (!err) seen[phone] = 1;
     const known = (A.branches || []).some(b => b.toLowerCase() === r.branch.toLowerCase());
     return { no: r.no, first: r.first, last: r.last, phone, branch: r.branch, joining, raw: r.raw, err,
-             pan: r.pan, aadhaar: r.aadhaar, altPhone: r.altPhone, newBranch: !err && !!r.branch && !known };
+             pan: r.pan, aadhaar: r.aadhaar, altPhone: r.altPhone, sm: r.sm, cp: r.cp,
+             newBranch: !err && !!r.branch && !known };
   });
 }
 $("cBulk").onclick = () => {
@@ -1741,7 +1751,10 @@ $("bkBack").onclick = () => { $("bkStep2").classList.add("hidden"); $("bkStep1")
 $("bkClose").onclick = () => $("bulkModal").classList.add("hidden");
 $("bkSample").onclick = () => {
   const b = (A.branches || [])[0] || "Branch name";
-  const csv = "Name,Phone,Branch,Joining date\nVivek Jadhao,9876543210," + b + ",01-04-2026\nPriya Shah,9876501234," + b + ",15-04-2026\n";
+  const sm = (A.sms || [])[0] || "SM name", cp = (A.cpFirms || [])[0] || "CP firm";
+  const csv = "Name,Phone,Branch,Joining date,SM,CP firm,PAN,Aadhaar,Alternate contact\n" +
+    "Vivek Jadhao,9876543210," + b + ",01-04-2026," + sm + "," + cp + ",ABCDE1234F,,\n" +
+    "Priya Shah,9876501234," + b + ",15-04-2026," + sm + "," + cp + ",,,\n";
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   a.download = "callers_sample.csv"; document.body.appendChild(a); a.click(); a.remove();
@@ -1775,10 +1788,13 @@ function bkCheck(){
   $("bkNewBr").classList.toggle("hidden", !nb.length);
   if (nb.length) $("bkNewBr").innerHTML = "<b>New branch will be created</b>" + nb.map(esc).join(", ") +
     " — not in your branch list yet. It will be added when you continue.";
-  $("bkTable").innerHTML = "<thead><tr><th>#</th><th>Name</th><th>Phone</th><th>Branch</th><th>Joining date</th><th>Status</th></tr></thead><tbody>" +
+  const anySm = BK.some(r => r.sm || r.cp);
+  $("bkTable").innerHTML = "<thead><tr><th>#</th><th>Name</th><th>Phone</th><th>Branch</th>" +
+    (anySm ? "<th>SM</th><th>CP firm</th>" : "") + "<th>Joining date</th><th>Status</th></tr></thead><tbody>" +
     BK.map(r => '<tr class="bkrow ' + (r.err ? "bad" : "ok") + '"><td>' + r.no + "</td><td>" + esc((r.first + " " + r.last).trim() || "—") +
-      "</td><td>" + esc(r.phone || "—") + "</td><td>" + esc(r.branch || "—") + (r.newBranch ? " <b>(new)</b>" : "") +
-      "</td><td>" + (r.joining ? niceDate(r.joining) : esc(r.raw) || "—") + "</td><td>" + (r.err ? esc(r.err) : "Ready") + "</td></tr>").join("") +
+      "</td><td>" + esc(r.phone || "—") + "</td><td>" + esc(r.branch || "—") + (r.newBranch ? " <b>(new)</b>" : "") + "</td>" +
+      (anySm ? "<td>" + (esc(r.sm) || "—") + "</td><td>" + (esc(r.cp) || "—") + "</td>" : "") +
+      "<td>" + (r.joining ? niceDate(r.joining) : esc(r.raw) || "—") + "</td><td>" + (r.err ? esc(r.err) : "Ready") + "</td></tr>").join("") +
     "</tbody>";
   $("bkAdd").disabled = !ok.length;
   $("bkAdd").textContent = ok.length ? "Add " + ok.length + " caller" + (ok.length > 1 ? "s" : "") : "Nothing to add";
@@ -1788,7 +1804,7 @@ $("bkCheck").onclick = bkCheck;
 $("bkAdd").onclick = async () => {
   if (!BK) return;
   const rows = BK.filter(r => !r.err).map(r => ({ no: r.no, first: r.first, last: r.last, phone: r.phone, branch: r.branch,
-    joining: r.joining, pan: r.pan, aadhaar: r.aadhaar, altPhone: r.altPhone }));
+    joining: r.joining, pan: r.pan, aadhaar: r.aadhaar, altPhone: r.altPhone, sm: r.sm, cp: r.cp }));
   if (!rows.length) return;
   $("bkErr2").textContent = ""; busy(true);
   try{
