@@ -200,6 +200,20 @@
   button.ghost.danger{background:#fff;color:var(--err);border:1px solid var(--err)}
   .chk{display:flex;gap:9px;align-items:flex-start;font-size:14px;margin:12px 0;text-align:left}
   .chk input{width:18px;height:18px;margin:1px 0 0;flex:none}
+  .modal.big .lead{text-align:left;color:var(--muted);font-size:14px;line-height:1.55;margin:6px 0 0}
+  .colbox{border:1px solid var(--line);border-radius:12px;background:#f7f9f8;padding:14px 16px;margin:14px 0 18px;display:flex;flex-direction:column;gap:10px}
+  .colrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .colrow .tag{flex:none;width:76px;text-align:center;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:5px 0;border-radius:999px}
+  .tag.req{background:var(--brand);color:#fff}
+  .tag.opt{background:#e4eae8;color:#5d6b66}
+  .colrow .chip{font-size:13px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 10px}
+  .vhide{position:absolute;width:1px;height:1px;opacity:0}
+  .filebtn{display:flex;align-items:center;gap:12px;height:46px;padding:0 14px;background:#fff;border:1px solid var(--line);border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--ink)}
+  .filebtn:hover{border-color:var(--brand);color:var(--brand)}
+  .filebtn em{min-width:0;font-style:normal;font-weight:400;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #bkFile:focus + .filebtn,.filebtn:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px rgba(18,140,126,.15)}
+  .colnote{margin:2px 0 0;font-size:12.5px;line-height:1.5;color:var(--muted);text-align:left}
+  @media (max-width:560px){ .colrow .tag{width:100%} }
   .bkrow td{font-size:13px}
   .bkrow.bad td{background:#fdeeee;color:#7a2a24}
   .bkrow.bad td:last-child{font-weight:600}
@@ -618,10 +632,16 @@
     <h2>Upload a list of callers</h2>
 
     <div id="bkStep1">
-      <p>Four columns in this order: <b>Name, Phone, Branch, Joining date</b>. A heading row is fine. Copy the rows from Excel and paste them below, or choose the file.</p>
-      <p class="hint" style="text-align:left;margin-top:-6px">With a heading row you can add more columns in any order: <b>SM, CP firm, PAN, Aadhaar, Alternate contact</b>. They are all optional.</p>
+      <p class="lead">Copy the rows from Excel and paste them below, or choose the file. A heading row is fine.</p>
+      <div class="colbox">
+        <div class="colrow"><span class="tag req">Required</span><span class="chip">Name</span><span class="chip">Phone</span><span class="chip">Branch</span><span class="chip">Joining date</span></div>
+        <div class="colrow"><span class="tag opt">Optional</span><span class="chip">SM</span><span class="chip">CP firm</span><span class="chip">PAN</span><span class="chip">Aadhaar</span><span class="chip">Alternate contact</span></div>
+        <p class="colnote">Without a heading row, keep the four required columns in that order. With one, the columns can be in any order.</p>
+      </div>
       <div class="row" style="margin-top:12px">
-        <div><label for="bkFile">Excel or CSV file</label><input type="file" id="bkFile" accept=".xlsx,.xls,.csv"></div>
+        <div><label for="bkFile">Excel or CSV file</label>
+          <label class="filebtn" for="bkFile"><span>Choose file</span><em id="bkFileName">No file chosen</em></label>
+          <input type="file" id="bkFile" accept=".xlsx,.xls,.csv" class="vhide"></div>
         <div><label>Not sure of the format?</label><button type="button" class="ghost" id="bkSample">Download a sample file</button></div>
       </div>
       <label for="bkText">…or paste the rows here</label>
@@ -1743,7 +1763,7 @@ function bkCheckRows(list){
   });
 }
 $("cBulk").onclick = () => {
-  BK = null; $("bkText").value = ""; $("bkFile").value = ""; $("bkErr").textContent = ""; $("bkErr2").textContent = "";
+  BK = null; $("bkText").value = ""; $("bkFile").value = ""; $("bkFileName").textContent = "No file chosen"; $("bkErr").textContent = ""; $("bkErr2").textContent = "";
   $("bkStep1").classList.remove("hidden"); $("bkStep2").classList.add("hidden"); $("bkStep3").classList.add("hidden");
   $("bulkModal").classList.remove("hidden");
 };
@@ -1761,6 +1781,7 @@ $("bkSample").onclick = () => {
 };
 $("bkFile").onchange = async () => {
   const f = $("bkFile").files[0];
+  $("bkFileName").textContent = f ? f.name : "No file chosen";
   if (!f) return;
   $("bkErr").textContent = ""; busy(true);
   try{
