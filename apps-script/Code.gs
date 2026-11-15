@@ -39,6 +39,7 @@ const COLS = {
   'Branches': ['Branch'],
   'SMs': ['SM Name'],
   'Locations': ['Location'],
+  'CP Firms': ['CP Firm'],
   'Settings': ['Setting', 'Value', 'Description'],
 };
 const DATE_COLS = ['Date', 'Joining Date', 'Effective Date'];
@@ -69,6 +70,7 @@ function setup() {
                      'Upvan Callers', 'Nerul Commercial Callers', 'Juinagar Commercial Calling']);
   seed_('SMs', ['sohail sir', 'Aman sir', 'anand sir', 'Saurabh Khandagale']);
   seed_('Locations', ['on site', 'office', 'field visit']);
+  seed_('CP Firms', ['DT', 'H square']);
   [['Logout reminder time', '19:00', 'After this time (24-hour), callers who have not posted the logout see "Kindly post the logout"'],
    ['Late after', '10:00', 'Login after this time (24-hour) is marked Late'],
    ['Weekly off', 'Monday', 'This day is not counted as absent (write None for no weekly off)'],
@@ -176,7 +178,7 @@ function buildSummaries_(ss) {
 /* ================= Look & feel of the sheets ================= */
 function format_(ss) {
   const GREEN = '#128c7e';
-  const order = ['Employees', 'Attendance', 'Logout Requests', 'Employee Summary', 'Branch Summary', 'Branch Transfers', 'Branches', 'SMs', 'Locations', 'Settings'];
+  const order = ['Employees', 'Attendance', 'Logout Requests', 'Employee Summary', 'Branch Summary', 'Branch Transfers', 'Branches', 'SMs', 'Locations', 'CP Firms', 'Settings'];
   order.forEach(function (n, i) {
     const s = ss.getSheetByName(n); if (!s) return;
     ss.setActiveSheet(s); ss.moveActiveSheet(i + 1);
@@ -228,7 +230,7 @@ function format_(ss) {
   s.getRange('F2:F').setNumberFormat('dd-mmm-yyyy');
   [140, 150, 170, 190, 190, 110, 110].forEach(function (w, i) { s.setColumnWidth(i + 1, w); });
   // Lists & settings
-  ['Branches', 'SMs', 'Locations'].forEach(function (n) { ss.getSheetByName(n).setColumnWidth(1, 240); });
+  ['Branches', 'SMs', 'Locations', 'CP Firms'].forEach(function (n) { const sh = ss.getSheetByName(n); if (sh) sh.setColumnWidth(1, 240); });
   s = ss.getSheetByName('Settings'); s.setColumnWidth(1, 170); s.setColumnWidth(2, 90); s.setColumnWidth(3, 520);
   // Summaries
   s = ss.getSheetByName('Employee Summary');
@@ -528,7 +530,7 @@ function callerState_(u) {
     history: days.slice(0, 10).map(function (d) {
       return { date: d, login: byDay[d].login ? byDay[d].login.time : '', logout: byDay[d].logout ? byDay[d].logout.time : '' };
     }),
-    config: { sms: list_('SMs'), locations: list_('Locations'), reminderAt: setting_('Logout reminder time', '19:00') },
+    config: { sms: list_('SMs'), locations: list_('Locations'), cpFirms: list_('CP Firms'), reminderAt: setting_('Logout reminder time', '19:00') },
     serverMinutes: nowMinutes_(),
     requestable: requestableDays_(u, byDay, days, today),
     requests: requests_().filter(function (r) { return r.username === u.username; }).slice(-10).reverse().map(function (r) {
@@ -701,7 +703,7 @@ const API = {
     auth_(p.token, true);
     return {
       users: users_().map(publicUser_),
-      branches: list_('Branches'), sms: list_('SMs'), locations: list_('Locations'),
+      branches: list_('Branches'), sms: list_('SMs'), locations: list_('Locations'), cpFirms: list_('CP Firms'),
       reminderAt: setting_('Logout reminder time', '19:00'),
       lateAfter: setting_('Late after', '10:00'),
       weeklyOff: setting_('Weekly off', 'Monday'),
@@ -886,12 +888,13 @@ const API = {
       return (a || []).map(function (s) { return String(s).trim(); })
         .filter(function (s) { if (!s || seen[s.toLowerCase()]) return false; seen[s.toLowerCase()] = 1; return true; });
     };
-    const b = clean(p.branches), s = clean(p.sms), l = clean(p.locations);
-    if (!b.length || !s.length || !l.length) throw new Error('Branches, SMs and Locations each need at least one entry.');
+    const b = clean(p.branches), s = clean(p.sms), l = clean(p.locations), c = clean(p.cpFirms);
+    if (!b.length || !s.length || !l.length || !c.length)
+      throw new Error('Branches, SMs, Locations and CP firms each need at least one entry.');
     if (!/^\d{1,2}:\d{2}$/.test(p.reminderAt || '')) throw new Error('Reminder time must look like 19:00');
     if (!/^\d{1,2}:\d{2}$/.test(p.lateAfter || '')) throw new Error('Late-after time must look like 10:00');
     if (p.weeklyOff !== 'None' && DAYS_.indexOf(p.weeklyOff) < 0) throw new Error('Please choose the weekly off day.');
-    replaceList_('Branches', b); replaceList_('SMs', s); replaceList_('Locations', l);
+    replaceList_('Branches', b); replaceList_('SMs', s); replaceList_('Locations', l); replaceList_('CP Firms', c);
     setSetting_('Logout reminder time', p.reminderAt);
     setSetting_('Late after', p.lateAfter);
     setSetting_('Weekly off', p.weeklyOff);

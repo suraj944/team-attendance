@@ -320,7 +320,8 @@
 
     <div id="loginFields">
       <label for="fCp">CP firm</label>
-      <input id="fCp" placeholder="e.g. DT">
+      <select id="fCp"></select>
+      <input id="fCpOther" class="hidden" placeholder="Type CP firm" style="margin-top:8px">
       <label for="fLoc">Location</label>
       <select id="fLoc"></select>
       <input id="fLocOther" class="hidden" placeholder="Type location" style="margin-top:8px">
@@ -497,6 +498,9 @@
       <div><label for="lBranches">Branches / projects</label><textarea id="lBranches"></textarea></div>
       <div><label for="lSms">SM names</label><textarea id="lSms"></textarea></div>
       <div><label for="lLocs">Locations</label><textarea id="lLocs"></textarea></div>
+    </div>
+    <div class="grid3" style="margin-top:6px">
+      <div><label for="lCps">CP firm names</label><textarea id="lCps"></textarea></div>
     </div>
     <div class="grid3" style="margin-top:6px">
       <div><label for="lRemind">Logout reminder time (24-hour)</label><input id="lRemind" placeholder="19:00"></div>
@@ -829,7 +833,9 @@ function startCaller(st){
   const last = JSON.parse(store.get("att_last_" + st.user.username) || "{}");
   fill($("fSm"), st.config.sms, last.sm || "", "Select SM");
   fill($("fLoc"), [...st.config.locations, "Other…"], last.loc || st.config.locations[0]);
-  if (!$("fCp").value) $("fCp").value = last.cp || "";
+  const cps = st.config.cpFirms || [];
+  fill($("fCp"), [...cps, "Other…"], cps.includes(last.cp) ? last.cp : (last.cp ? "Other…" : ""), "Select CP firm");
+  if (last.cp && !cps.includes(last.cp)) $("fCpOther").value = last.cp;
   setMode(st.today.login && !st.today.logout ? "logout" : "login");
 }
 
@@ -884,7 +890,7 @@ function refresh(){
   $("submitBtn").disabled = blocked && !posted;
   $("submitBtn").textContent = blocked ? (posted ? "Open WhatsApp again" : "Login required first")
     : "Submit " + (mode==="login"?"Login":"Logout") + " & open WhatsApp";
-  ["fCp","fSm","fLoc","fLocOther","lHour","lMin","lAp","oHour","oMin","oAp",...LOGOUT_IDS].forEach(id => $(id).disabled = blocked);
+  ["fCp","fCpOther","fSm","fLoc","fLocOther","lHour","lMin","lAp","oHour","oMin","oAp",...LOGOUT_IDS].forEach(id => $(id).disabled = blocked);
   if (mode === "logout"){
     if (t.login) fill($("fSm"), S.config.sms.includes(t.login.sm) ? S.config.sms : [t.login.sm, ...S.config.sms], t.login.sm);
     $("fSm").disabled = true;
@@ -911,6 +917,7 @@ function refresh(){
 }
 
 function getLoc(){ return $("fLoc").value === "Other…" ? v("fLocOther") : $("fLoc").value; }
+function getCp(){ return $("fCp").value === "Other…" ? v("fCpOther") : $("fCp").value; }
 function setLogoutTime(mins){
   const h = Math.floor(mins / 60);
   $("oHour").value = String(h % 12 || 12);
@@ -935,7 +942,7 @@ function buildMessage(){
   if (mode === "login") return [
     "Date : " + date,
     "Caller name : " + S.user.name,
-    "Cp firm : " + v("fCp"),
+    "Cp firm : " + getCp(),
     "SM :  " + $("fSm").value,
     "Location:  " + getLoc(),
     "Login time :" + loginTimeText(),
@@ -956,9 +963,10 @@ function buildMessage(){
 }
 function updatePreview(){
   $("fLocOther").classList.toggle("hidden", $("fLoc").value !== "Other…");
+  $("fCpOther").classList.toggle("hidden", $("fCp").value !== "Other…");
   $("preview").innerHTML = '<span class="h">' + esc(S.user.name) + '</span>\n' + esc(buildMessage());
 }
-["fCp","fSm","fLoc","fLocOther","lHour","lMin","lAp","oHour","oMin","oAp",...LOGOUT_IDS].forEach(id => {
+["fCp","fCpOther","fSm","fLoc","fLocOther","lHour","lMin","lAp","oHour","oMin","oAp",...LOGOUT_IDS].forEach(id => {
   $(id).addEventListener("input", updatePreview); $(id).addEventListener("change", updatePreview);
 });
 
@@ -968,7 +976,7 @@ function validate(){
     const mins = (Number($("lHour").value) % 12 + ($("lAp").value === "PM" ? 12 : 0)) * 60 + Number($("lMin").value);
     if (mins > nowMinutes()) return "Login time cannot be in the future.";
     if (!$("fSm").value) return "Please choose the SM.";
-    if (!v("fCp")) return "Please enter the CP firm.";
+    if (!getCp()) return "Please choose the CP firm.";
     if (!getLoc()) return "Please enter the location.";
     return "";
   }
@@ -1000,7 +1008,7 @@ $("attForm").addEventListener("submit", e => {
   }
   const err = validate(); $("formErr").textContent = err; if (err) return;
   pending = mode === "login"
-    ? { type:"login", data:{ hour:$("lHour").value, min:$("lMin").value, ap:$("lAp").value, sm:$("fSm").value, cp:v("fCp"), loc:getLoc() } }
+    ? { type:"login", data:{ hour:$("lHour").value, min:$("lMin").value, ap:$("lAp").value, sm:$("fSm").value, cp:getCp(), loc:getLoc() } }
     : { type:"logout", data:{ hour:$("oHour").value, min:$("oMin").value, ap:$("oAp").value, total:v("oTotal"), connect:v("oConnect"), lead:v("oLead"), visitToday:v("oVisitToday"), visitTom:v("oVisitTom"), booking:v("oBooking"), wtd:v("oWtd") } };
   $("cTitle").textContent = "Confirm your " + (mode === "login" ? "Login" : "Logout");
   $("cMsg").textContent = buildMessage();
@@ -1124,6 +1132,7 @@ function renderAdmin(){
   $("lBranches").value = A.branches.join("\n");
   $("lSms").value = A.sms.join("\n");
   $("lLocs").value = A.locations.join("\n");
+  $("lCps").value = (A.cpFirms || []).join("\n");
   $("lRemind").value = A.reminderAt;
   $("lLate").value = A.lateAfter;
   $("lOff").value = A.weeklyOff;
@@ -1844,7 +1853,7 @@ $("lSave").onclick = async () => {
   const lines = id => $(id).value.split("\n").map(s => s.trim()).filter(Boolean);
   $("lErr").textContent = "";
   busy(true);
-  try{ A = await call("saveLists", { branches: lines("lBranches"), sms: lines("lSms"), locations: lines("lLocs"), reminderAt: v("lRemind"), lateAfter: v("lLate"), weeklyOff: $("lOff").value });
+  try{ A = await call("saveLists", { branches: lines("lBranches"), sms: lines("lSms"), locations: lines("lLocs"), cpFirms: lines("lCps"), reminderAt: v("lRemind"), lateAfter: v("lLate"), weeklyOff: $("lOff").value });
        renderAdmin(); toast("Settings saved"); }
   catch(err){ $("lErr").textContent = err.message; }
   busy(false);
