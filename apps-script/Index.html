@@ -118,7 +118,8 @@
   .seg{display:grid;grid-template-columns:1fr 1fr;background:#eef2f0;border-radius:12px;padding:4px;gap:4px;margin-bottom:6px}
   .seg.five{grid-template-columns:repeat(5,1fr)}
   .seg.six{grid-template-columns:repeat(6,1fr)}
-  .seg.seven{grid-template-columns:repeat(7,1fr)}
+  .seg.seven{grid-template-columns:repeat(8,1fr)}
+  .seg.seven button{padding:10px 4px;font-size:13px}
   table.reg{font-size:12px}
   table.reg th,table.reg td{padding:6px 4px;text-align:center;white-space:nowrap}
   table.reg td.nm,table.reg th.nm{text-align:left;padding-left:10px;position:sticky;left:0;background:#fff;z-index:1}
@@ -215,6 +216,22 @@
   .tag.opt{background:#e4eae8;color:#5d6b66}
   .colrow .chip{font-size:13px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 10px}
   .vhide{position:absolute;width:1px;height:1px;opacity:0}
+  .bcards{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:14px}
+  .bcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+  .bcard.accent{background:#f3f8f6;border-color:#cfe3dc}
+  .blabel{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+  .bbig{font-size:22px;font-weight:800;color:var(--brand);line-height:1.25}
+  .bsub{font-size:12px;color:var(--muted)}
+  .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:4px}
+  .plan{position:relative;text-align:left;background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:14px 16px;cursor:pointer;transition:.15s}
+  .plan:hover{border-color:#9ec5b8}
+  .plan.on{border-color:var(--brand);box-shadow:0 0 0 3px rgba(11,63,57,.08)}
+  .plan h3{margin:0 0 2px;font-size:15px}
+  .plan .price{font-size:26px;font-weight:800;color:var(--brand);line-height:1.2}
+  .plan .per{font-size:12px;color:var(--muted)}
+  .plan .tot{font-size:13px;font-weight:700;margin-top:8px}
+  .plan .save{position:absolute;top:12px;right:12px;font-size:11px;font-weight:700;color:#0c7a4a;background:#e4f5ec;border-radius:20px;padding:3px 9px}
+  @media (max-width:900px){ .bcards{grid-template-columns:1fr 1fr} .plans{grid-template-columns:1fr} }
   .btnrow{display:flex;gap:8px;flex-wrap:wrap}
   .btnrow button{flex:1 1 0;min-width:0;padding:0 10px;white-space:nowrap}
   .filebtn{display:flex;align-items:center;gap:12px;height:46px;padding:0 14px;background:#fff;border:1px solid var(--line);border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--ink)}
@@ -435,6 +452,7 @@
     <button type="button" data-atab="lists">Settings</button>
     <button type="button" data-atab="requests">Requests <span class="badge hidden" id="reqBadge" style="background:var(--err);color:#fff;margin-left:2px">0</span></button>
     <button type="button" data-atab="transfers">Branch history</button>
+    <button type="button" data-atab="billing">Billing</button>
   </div>
 
   <!-- Attendance report -->
@@ -588,6 +606,87 @@
     <div class="tablewrap"><table>
       <thead><tr><th>Changed on</th><th>Caller</th><th>From</th><th>To</th><th>Effective</th><th>By</th></tr></thead>
       <tbody id="tBody"></tbody>
+    </table></div>
+  </section>
+
+  <!-- Billing -->
+  <section id="a_billing" class="hidden">
+    <div class="alert hidden" id="bStatus" style="margin-top:14px"></div>
+
+    <div class="bcards">
+      <div class="bcard">
+        <span class="blabel">Plan</span>
+        <b class="bbig" id="bPlanName">—</b>
+        <span class="bsub" id="bPlanRate"></span>
+      </div>
+      <div class="bcard">
+        <span class="blabel">Callers billed</span>
+        <b class="bbig" id="bCallers">—</b>
+        <span class="bsub" id="bCallersSub"></span>
+      </div>
+      <div class="bcard accent">
+        <span class="blabel">Amount this period</span>
+        <b class="bbig" id="bAmount">—</b>
+        <span class="bsub" id="bAmountSub"></span>
+      </div>
+      <div class="bcard">
+        <span class="blabel">Paid till</span>
+        <b class="bbig" id="bPaidTill">—</b>
+        <span class="bsub" id="bDaysLeft"></span>
+      </div>
+      <div class="bcard">
+        <span class="blabel">Collected so far</span>
+        <b class="bbig" id="bCollected">—</b>
+        <span class="bsub">across all payments</span>
+      </div>
+    </div>
+
+    <div class="sechead"><h2>Choose the plan</h2></div>
+    <div class="plans" id="bPlans"></div>
+
+    <div class="grid3" style="margin-top:16px">
+      <div>
+        <div class="sechead"><h2>Record a payment</h2></div>
+        <div class="row">
+          <div><label for="pyAmount">Amount received (₹)</label><input id="pyAmount" inputmode="numeric" placeholder="5428"></div>
+          <div><label for="pyDate">Received on</label><input id="pyDate" type="date"></div>
+        </div>
+        <div class="row">
+          <div><label for="pyFrom">Period starts</label><input id="pyFrom" type="date"></div>
+          <div><label for="pyMode">Mode</label><select id="pyMode"><option>UPI</option><option>Bank transfer</option><option>Cash</option><option>Cheque</option></select></div>
+        </div>
+        <div class="row">
+          <div><label for="pyRef">UTR / reference</label><input id="pyRef" placeholder="Optional"></div>
+          <div><label for="pyBy">Paid by</label><input id="pyBy" placeholder="Company name"></div>
+        </div>
+        <button type="button" id="pySave">Record the payment</button>
+        <button type="button" class="ghost" id="bInvoice">⬇ Download invoice</button>
+        <div class="err" id="pyErr"></div>
+      </div>
+      <div>
+        <div class="sechead"><h2>Rates and details</h2></div>
+        <div class="row">
+          <div><label for="bRateM">Monthly (₹ per caller)</label><input id="bRateM" inputmode="numeric"></div>
+          <div><label for="bRateQ">Quarterly (₹ per caller)</label><input id="bRateQ" inputmode="numeric"></div>
+        </div>
+        <div class="row">
+          <div><label for="bRateY">Yearly (₹ per caller)</label><input id="bRateY" inputmode="numeric"></div>
+          <div><label for="bFree">Callers not charged</label><input id="bFree" inputmode="numeric"></div>
+        </div>
+        <div class="row">
+          <div><label for="bTo">Bill to (company)</label><input id="bTo" placeholder="Company name"></div>
+          <div><label for="bBy">Bill from (you)</label><input id="bBy" placeholder="Your name or firm"></div>
+        </div>
+        <div><label for="bUpi">UPI ID for the invoice</label><input id="bUpi" placeholder="name@bank"></div>
+        <button type="button" id="bSave">Save</button>
+        <div class="err" id="bErr"></div>
+      </div>
+    </div>
+
+    <div class="sechead"><h2>Payments received</h2></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Received</th><th>Period</th><th>Plan</th><th class="num">Callers</th><th class="num">Rate</th><th class="num">Amount</th><th>Mode</th><th>Reference</th><th>Recorded by</th></tr></thead>
+      <tbody id="bPays"></tbody>
     </table></div>
   </section>
 </div>
@@ -1221,8 +1320,9 @@ async function loadAdmin(){
 }
 document.querySelectorAll("[data-atab]").forEach(b => b.onclick = () => {
   document.querySelectorAll("[data-atab]").forEach(x => x.classList.toggle("on", x === b));
-  ["report","reports","attendance","callers","lists","requests","transfers"].forEach(n => $("a_" + n).classList.toggle("hidden", n !== b.dataset.atab));
+  ["report","reports","attendance","callers","lists","requests","transfers","billing"].forEach(n => $("a_" + n).classList.toggle("hidden", n !== b.dataset.atab));
   if (b.dataset.atab === "requests") loadRequests();
+  if (b.dataset.atab === "billing") loadBilling();
   if (b.dataset.atab === "report") loadReport();
   if (b.dataset.atab === "reports" && !PR) setRange("month");
   if (b.dataset.atab === "attendance" && !AR) setARange("month");
@@ -1934,6 +2034,124 @@ $("bkSample").onclick = () => {
   a.download = "callers_sample.csv"; document.body.appendChild(a); a.click(); a.remove();
 };
 $("bkExport").onclick = () => downloadCallers((A.users || []).filter(u => u.role === "caller"), "");
+
+/* ================= Billing ================= */
+let B = null;
+const PLAN_MONTHS = { Monthly: 1, Quarterly: 3, Yearly: 12 };
+function rupee(n){ return "₹" + Number(n || 0).toLocaleString("en-IN"); }
+async function loadBilling(){
+  busy(true);
+  try{ B = await call("billingData", {}); renderBilling(); }
+  catch(e){ popup("Could not load billing", e.message); }
+  busy(false);
+}
+function renderBilling(){
+  if (!B) return;
+  $("bPlanName").textContent = B.plan;
+  $("bPlanRate").textContent = rupee(B.rate) + " per caller per " + (B.months === 1 ? "month" : B.months + " months");
+  $("bCallers").textContent = B.billable;
+  $("bCallersSub").textContent = B.freeCallers ? B.callers + " active, " + B.freeCallers + " not charged" : "active callers";
+  $("bAmount").textContent = rupee(B.amount);
+  $("bAmountSub").textContent = "works out to " + rupee(B.perMonth) + " a month";
+  $("bPaidTill").textContent = B.paidTill ? niceDate(B.paidTill) : "not paid yet";
+  $("bDaysLeft").textContent = B.paidTill
+    ? (B.daysLeft >= 0 ? B.daysLeft + " day" + (B.daysLeft === 1 ? "" : "s") + " left" : Math.abs(B.daysLeft) + " days overdue")
+    : "record the first payment below";
+  $("bCollected").textContent = rupee(B.collected);
+
+  const st = $("bStatus");
+  st.classList.remove("hidden", "warn", "bad", "ok");
+  if (B.neverPaid){ st.classList.add("warn"); st.textContent = "No payment recorded yet. The next period runs " + niceDate(B.nextFrom) + " to " + niceDate(B.nextTo) + " and comes to " + rupee(B.amount) + "."; }
+  else if (B.expired){ st.classList.add("bad"); st.textContent = "Subscription ended on " + niceDate(B.paidTill) + " — " + Math.abs(B.daysLeft) + " days ago. " + rupee(B.amount) + " is due for " + niceDate(B.nextFrom) + " to " + niceDate(B.nextTo) + "."; }
+  else if (B.daysLeft <= 7){ st.classList.add("warn"); st.textContent = "Renewal due in " + B.daysLeft + " day" + (B.daysLeft === 1 ? "" : "s") + ". " + rupee(B.amount) + " for " + niceDate(B.nextFrom) + " to " + niceDate(B.nextTo) + "."; }
+  else { st.classList.add("ok"); st.textContent = "Paid up to " + niceDate(B.paidTill) + ". Nothing due for another " + B.daysLeft + " days."; }
+
+  const base = B.rates.Monthly * 12;
+  $("bPlans").innerHTML = ["Monthly", "Quarterly", "Yearly"].map(name => {
+    const m = PLAN_MONTHS[name], r = B.rates[name], yearly = r * (12 / m);
+    const save = base > 0 ? Math.round((1 - yearly / base) * 100) : 0;
+    return '<div class="plan' + (name === B.plan ? " on" : "") + '" data-plan="' + name + '">' +
+      (save > 0 ? '<span class="save">save ' + save + "%</span>" : "") +
+      "<h3>" + name + "</h3>" +
+      '<div class="price">' + rupee(r) + '</div>' +
+      '<div class="per">per caller' + (m === 1 ? " a month" : " for " + m + " months") + "</div>" +
+      '<div class="tot">' + rupee(r * B.billable) + " for " + B.billable + " callers</div>" +
+      '<div class="per">' + rupee(Math.round(r * B.billable / m)) + " a month · " + rupee(yearly * B.billable) + " a year</div>" +
+      "</div>";
+  }).join("");
+  document.querySelectorAll("[data-plan]").forEach(el => el.onclick = () => saveBilling(el.dataset.plan));
+
+  $("bRateM").value = B.rates.Monthly; $("bRateQ").value = B.rates.Quarterly; $("bRateY").value = B.rates.Yearly;
+  $("bFree").value = B.freeCallers; $("bTo").value = B.billedTo; $("bBy").value = B.billedBy; $("bUpi").value = B.upi;
+  if (!v("pyAmount")) $("pyAmount").value = B.amount;
+  if (!v("pyDate")) $("pyDate").value = B.today;
+  if (!v("pyFrom")) $("pyFrom").value = B.nextFrom;
+  if (!v("pyBy")) $("pyBy").value = B.billedTo;
+
+  $("bPays").innerHTML = B.payments.length ? B.payments.map(p =>
+    "<tr><td>" + esc(niceDate(p.received)) + "</td><td>" + esc(niceDate(p.from)) + " – " + esc(niceDate(p.to)) +
+    "</td><td>" + esc(p.plan || "") + '</td><td class="num">' + esc(p.callers || "") + '</td><td class="num">' + rupee(p.rate) +
+    '</td><td class="num"><b>' + rupee(p.amount) + "</b></td><td>" + esc(p.mode || "") + "</td><td>" + esc(p.reference || "") +
+    "</td><td>" + esc(p.by || "") + "</td></tr>").join("")
+    : '<tr><td colspan="9" style="color:var(--muted)">No payments recorded yet.</td></tr>';
+}
+async function saveBilling(plan){
+  $("bErr").textContent = ""; busy(true);
+  try{
+    B = await call("saveBilling", { billing: {
+      plan: plan || B.plan, rateMonthly: v("bRateM"), rateQuarterly: v("bRateQ"), rateYearly: v("bRateY"),
+      freeCallers: v("bFree"), billedTo: v("bTo"), billedBy: v("bBy"), upi: v("bUpi") } });
+    $("pyAmount").value = B.amount;
+    renderBilling(); toast("Saved");
+  }catch(e){ $("bErr").textContent = e.message; }
+  busy(false);
+}
+$("bSave").onclick = () => saveBilling(null);
+$("pySave").onclick = async () => {
+  $("pyErr").textContent = "";
+  if (!v("pyAmount")) { $("pyErr").textContent = "Please enter the amount received."; return; }
+  busy(true);
+  try{
+    B = await call("recordPayment", { payment: {
+      amount: v("pyAmount"), received: v("pyDate"), from: v("pyFrom"), plan: B.plan,
+      mode: v("pyMode"), reference: v("pyRef"), paidBy: v("pyBy") } });
+    $("pyRef").value = "";
+    renderBilling(); toast("Payment recorded — paid till " + niceDate(B.paidTill));
+  }catch(e){ $("pyErr").textContent = e.message; }
+  busy(false);
+};
+$("bInvoice").onclick = () => {
+  if (!B) return;
+  const from = v("pyFrom") || B.nextFrom, to = B.nextTo;
+  const no = "INV-" + from.replace(/-/g, "").slice(2) + "-" + B.billable;
+  const win = window.open("", "_blank");
+  if (!win) { popup("Pop-up blocked", "Please allow pop-ups for this site, then press the invoice button again."); return; }
+  win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + no + '</title><style>' +
+    'body{font-family:Arial,Helvetica,sans-serif;color:#16201e;max-width:720px;margin:36px auto;padding:0 20px}' +
+    'h1{font-size:22px;margin:0 0 2px}.m{color:#6b7a76;font-size:13px}' +
+    '.bar{height:4px;background:#0b3f39;margin:14px 0 20px;border-radius:3px}' +
+    'table{width:100%;border-collapse:collapse;margin-top:18px}' +
+    'th,td{border-bottom:1px solid #e3e9e7;padding:10px 8px;text-align:left;font-size:14px}' +
+    'th{background:#f3f6f5;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#54635f}' +
+    '.num{text-align:right}.tot td{border-top:2px solid #0b3f39;border-bottom:none;font-weight:bold;font-size:16px}' +
+    '.two{display:flex;justify-content:space-between;gap:30px;margin-top:6px}' +
+    '@media print{body{margin:0}.noprint{display:none}}</style></head><body>' +
+    "<h1>" + esc(B.billedBy || "Team Attendance") + "</h1>" +
+    '<div class="m">Team Attendance — subscription invoice</div><div class="bar"></div>' +
+    '<div class="two"><div><div class="m">Billed to</div><b>' + esc(B.billedTo || "—") + "</b></div>" +
+    '<div style="text-align:right"><div class="m">Invoice no.</div><b>' + no + "</b>" +
+    '<div class="m" style="margin-top:6px">Date</div><b>' + niceDate(B.today) + "</b></div></div>" +
+    "<table><thead><tr><th>Description</th><th class='num'>Callers</th><th class='num'>Rate</th><th class='num'>Amount</th></tr></thead><tbody>" +
+    "<tr><td>Team Attendance subscription — " + B.plan.toLowerCase() + "<br><span class='m'>" + niceDate(from) + " to " + niceDate(to) + "</span></td>" +
+    "<td class='num'>" + B.billable + "</td><td class='num'>" + rupee(B.rate) + "</td><td class='num'>" + rupee(B.amount) + "</td></tr>" +
+    "<tr class='tot'><td colspan='3'>Total payable</td><td class='num'>" + rupee(B.amount) + "</td></tr>" +
+    "</tbody></table>" +
+    (B.upi ? '<p class="m" style="margin-top:22px">Pay by UPI to <b style="color:#16201e">' + esc(B.upi) + "</b></p>" : "") +
+    '<p class="m">' + B.billable + " callers × " + rupee(B.rate) + " · works out to " + rupee(B.perMonth) + " a month.</p>" +
+    '<p class="noprint" style="margin-top:26px"><button onclick="window.print()" style="padding:10px 18px;font-size:14px;background:#0b3f39;color:#fff;border:0;border-radius:8px;cursor:pointer">Print or save as PDF</button></p>' +
+    "</body></html>");
+  win.document.close();
+};
 $("bkFile").onchange = async () => {
   const f = $("bkFile").files[0];
   $("bkFileName").textContent = f ? f.name : "No file chosen";

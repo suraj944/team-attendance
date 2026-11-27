@@ -40,6 +40,8 @@ const COLS = {
   'SMs': ['SM Name'],
   'Locations': ['Location'],
   'CP Firms': ['CP Firm'],
+  'Payments': ['Payment ID', 'Received On', 'Period From', 'Period To', 'Plan', 'Callers', 'Rate',
+               'Amount', 'Paid By', 'Mode', 'Reference', 'Recorded By', 'Note'],
   'Settings': ['Setting', 'Value', 'Description'],
 };
 const DATE_COLS = ['Date', 'Joining Date', 'Effective Date'];
@@ -74,7 +76,16 @@ function setup() {
   [['Logout reminder time', '19:00', 'After this time (24-hour), callers who have not posted the logout see "Kindly post the logout"'],
    ['Late after', '10:00', 'Login after this time (24-hour) is marked Late'],
    ['Weekly off', 'Monday', 'This day is not counted as absent (write None for no weekly off)'],
-   ['Tracking start date', todayKey_(), 'Absent days are counted only from this date (yyyy-mm-dd), so days before the website was used are not absent']].forEach(function (r) {
+   ['Tracking start date', todayKey_(), 'Absent days are counted only from this date (yyyy-mm-dd), so days before the website was used are not absent'],
+   ['Billing plan', 'Monthly', 'Monthly, Quarterly or Yearly'],
+   ['Rate monthly', '59', 'Rupees per caller per month'],
+   ['Rate quarterly', '149', 'Rupees per caller for 3 months'],
+   ['Rate yearly', '499', 'Rupees per caller for 12 months'],
+   ['Paid till', '', 'The subscription is paid up to this date (yyyy-mm-dd). Set by recording a payment'],
+   ['Billed to', '', 'Company name that appears on the invoice'],
+   ['Billed by', '', 'Your name or firm, shown as the biller on the invoice'],
+   ['Billing UPI', '', 'UPI ID shown on the invoice for payment'],
+   ['Free callers', '0', 'This many callers are not charged (for example your own admin logins)']].forEach(function (r) {
     if (!setting_(r[0], '')) append_('Settings', r);
   });
   buildSummaries_(ss);
@@ -1030,4 +1041,94 @@ const API = {
       }),
     };
   },
+
+  /* ---------- Billing ---------- */
+  billingData: function (p) {
+    auth_(p.token, true);
+    return billing_();
+  },
+
+  saveBilling: function (p) {
+    const admin = auth_(p.token, true), x = p.billing || {};
+    const plan = PLAN_MONTHS_[x.plan] ? x.plan : 'Monthly';
+    [['Billing plan', plan],
+     ['Rate monthly', Math.max(0, Math.round(num_(x.rateMonthly)))],
+     ['Rate quarterly', Math.max(0, Math.round(num_(x.rateQuarterly)))],
+     ['Rate yearly', Math.max(0, Math.round(num_(x.rateYearly)))],
+     ['Free callers', Math.max(0, Math.round(num_(x.freeCallers)))],
+     ['Billed to', String(x.billedTo || '').trim()],
+     ['Billed by', String(x.billedBy || '').trim()],
+     ['Billing UPI', String(x.upi || '').trim()]].forEach(function (r) { setSetting_(r[0], r[1]); });
+    return billing_();
+  },
+
+  recordPayment: function (p) {
+    const admin = auth_(p.token, true), x = p.payment || {};
+    const b = billing_();
+    const amount = Math.round(num_(x.amount));
+    if (amount <= 0) throw new Error('Please enter the amount received.');
+    const received = /^\d{4}-\d{2}-\d{2}$/.test(x.received) ? x.received : todayKey_();
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(x.from) ? x.from : b.nextFrom;
+    const months = PLAN_MONTHS_[x.plan] ? PLAN_MONTHS_[x.plan] : b.months;
+    const to = addDays_(addMonths_(from, months), -1);
+    appendObj_('Payments', {
+      'Payment ID': 'PAY-' + (table_('Payments').rows.length + 1),
+      'Received On': received, 'Period From': from, 'Period To': to,
+      'Plan': x.plan || b.plan, 'Callers': b.billable, 'Rate': b.rate, 'Amount': amount,
+      'Paid By': String(x.paidBy || '').trim(), 'Mode': String(x.mode || 'UPI').trim(),
+      'Reference': String(x.reference || '').trim(), 'Recorded By': admin.name,
+      'Note': String(x.note || '').trim(),
+    });
+    if (!b.paidTill || to > b.paidTill) setSetting_('Paid till', to);
+    return billing_();
+  },
 };
+
+/* ================= Billing engine ================= */
+const PLAN_MONTHS_ = { 'Monthly': 1, 'Quarterly': 3, 'Yearly': 12 };
+function addMonths_(key, months) {
+  const p = String(key).split('-');
+  const y = Number(p[0]), m = Number(p[1]) - 1, d = Number(p[2]);
+  const last = new Date(Date.UTC(y, m + months + 1, 0)).getUTCDate();   // last day of the target month
+  const dt = new Date(Date.UTC(y, m + months, Math.min(d, last)));
+  return dt.toISOString().slice(0, 10);
+}
+function dayGap_(a, b) {        // whole days from a to b, can be negative
+  return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
+}
+function billing_() {
+  const today = todayKey_();
+  const plan = PLAN_MONTHS_[setting_('Billing plan', 'Monthly')] ? setting_('Billing plan', 'Monthly') : 'Monthly';
+  const months = PLAN_MONTHS_[plan];
+  const rates = { Monthly: num_(setting_('Rate monthly', '59')),
+                  Quarterly: num_(setting_('Rate quarterly', '149')),
+                  Yearly: num_(setting_('Rate yearly', '499')) };
+  const free = Math.max(0, Math.round(num_(setting_('Free callers', '0'))));
+  const callers = users_().filter(function (u) { return u.role === 'caller' && u.active === 'yes'; }).length;
+  const billable = Math.max(0, callers - free);
+  const rate = rates[plan];
+  const paidTill = /^\d{4}-\d{2}-\d{2}$/.test(setting_('Paid till', '')) ? setting_('Paid till', '') : '';
+  const nextFrom = paidTill && paidTill >= today ? addDays_(paidTill, 1) : today;
+  const payments = table_('Payments').rows.slice(-50).reverse().map(function (o) {
+    return { id: o['Payment ID'], received: o['Received On'], from: o['Period From'], to: o['Period To'],
+             plan: o['Plan'], callers: o['Callers'], rate: o['Rate'], amount: num_(o['Amount']),
+             paidBy: o['Paid By'], mode: o['Mode'], reference: o['Reference'], by: o['Recorded By'], note: o['Note'] };
+  });
+  return {
+    today: today, plan: plan, months: months, rates: rates, rate: rate,
+    callers: callers, freeCallers: free, billable: billable,
+    amount: billable * rate,
+    perMonth: Math.round((billable * rate) / months),
+    paidTill: paidTill,
+    daysLeft: paidTill ? dayGap_(today, paidTill) : null,
+    expired: !!paidTill && paidTill < today,
+    neverPaid: !paidTill,
+    nextFrom: nextFrom,
+    nextTo: addDays_(addMonths_(nextFrom, months), -1),
+    billedTo: setting_('Billed to', ''),
+    billedBy: setting_('Billed by', ''),
+    upi: setting_('Billing UPI', ''),
+    collected: payments.reduce(function (s, x) { return s + x.amount; }, 0),
+    payments: payments,
+  };
+}
