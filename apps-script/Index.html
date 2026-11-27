@@ -1102,7 +1102,6 @@
 <div class="toast" id="toast"></div>
 
 <script>
-/*__BOOT__*/
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -2637,13 +2636,28 @@ function plStart(info){
 }
 
 /* ================= start ================= */
-if (window.__BOOT && window.__BOOT.page === "plans"){ plStart(window.__BOOT.plans); }
-else
-(async function(){
+async function bootApp(){
   if (!token) return;
   busy(true);
   try{ show(await call("me")); }catch(e){ signOut(); }
   busy(false);
+}
+async function bootPlans(){
+  busy(true);
+  try{ plStart(await call("plansData", {})); }
+  catch(e){ popup("Could not load the plans page", e.message); }
+  busy(false);
+}
+(function(){
+  if (window.__BOOT && window.__BOOT.page === "plans") return plStart(window.__BOOT.plans);
+  var fromUrl = (location.search || "") + (location.hash || "") + (document.referrer || "");
+  if (window.google && google.script && google.script.url && google.script.url.getLocation){
+    google.script.url.getLocation(function(loc){
+      var page = loc && loc.parameter ? loc.parameter.page : "";
+      if (page === "plans") bootPlans(); else bootApp();
+    });
+  } else if (/[?&]page=plans/.test(fromUrl)) { bootPlans(); }
+  else { bootApp(); }
 })();
 </script>
 </body>

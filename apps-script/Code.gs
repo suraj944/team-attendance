@@ -51,11 +51,7 @@ const SUMMARY_ROWS = 300;     // employee rows prepared in "Employee Summary"
 /* ================= Web page ================= */
 function doGet(e) {
   const page = (e && e.parameter && e.parameter.page) || '';
-  let html = HtmlService.createHtmlOutputFromFile('Index').getContent();
-  if (page === 'plans') {
-    html = html.replace('/*__BOOT__*/', 'window.__BOOT = ' + JSON.stringify({ page: 'plans', plans: plansInfo_() }) + ';');
-  }
-  return HtmlService.createHtmlOutput(html)
+  return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle(page === 'plans' ? 'Team Attendance — Subscription plans' : 'Team Attendance')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -618,6 +614,9 @@ const API = {
   },
 
   me: function (p) { return stateFor_(auth_(p.token)); },
+
+  /* Public — the plans page needs no sign-in */
+  plansData: function (p) { return plansInfo_(); },
 
   post: function (p) {
     const lock = LockService.getScriptLock();
