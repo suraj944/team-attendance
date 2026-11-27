@@ -217,6 +217,7 @@
   .colrow .chip{font-size:13px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 10px}
   .vhide{position:absolute;width:1px;height:1px;opacity:0}
   /* ---- public plans page ---- */
+  #plansView{width:100%}
   .plwrap{max-width:1120px;margin:0 auto;padding:36px 18px 56px}
   .plhead{text-align:center;margin-bottom:26px}
   .plkicker{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--brand);margin:0 0 8px}
@@ -2624,7 +2625,10 @@ function plRender(cycle){
 }
 function plStart(info){
   PL = info;
+  setAuth(false);
   ["signInView", "callerView", "adminView"].forEach(id => $(id).classList.add("hidden"));
+  const shell = document.querySelector(".auth-wrap");
+  if (shell) shell.classList.add("hidden");
   $("plansView").classList.remove("hidden");
   $("plToggle").addEventListener("click", e => {
     const b = e.target.closest("button[data-cycle]");
