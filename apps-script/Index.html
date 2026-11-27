@@ -216,6 +216,18 @@
   .tag.opt{background:#e4eae8;color:#5d6b66}
   .colrow .chip{font-size:13px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 10px}
   .vhide{position:absolute;width:1px;height:1px;opacity:0}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:18px}
+  .panelhead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  .panelhead h2{margin:0;font-size:16px}
+  .panelhead .hint{margin:2px 0 0;text-align:left}
+  .panelhead .btnrow{flex-wrap:nowrap}
+  .panelhead .btnrow button{flex:0 0 auto;width:auto;padding:0 16px;margin:0}
+  .deflist{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+  .deflist div span{display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+  .deflist div b{font-size:15px}
+  .deflist div.on b{color:var(--brand)}
+  .deflist div.on span:after{content:" \2022 in use";color:var(--brand);letter-spacing:0}
+  @media (max-width:900px){ .deflist{grid-template-columns:1fr 1fr} }
   .bcards{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:14px}
   .bcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
   .bcard.accent{background:#f3f8f6;border-color:#cfe3dc}
@@ -644,41 +656,40 @@
     <div class="sechead"><h2>Choose the plan</h2></div>
     <div class="plans" id="bPlans"></div>
 
-    <div class="grid3" style="margin-top:16px">
-      <div>
-        <div class="sechead"><h2>Record a payment</h2></div>
-        <div class="row">
-          <div><label for="pyAmount">Amount received (₹)</label><input id="pyAmount" inputmode="numeric" placeholder="5428"></div>
-          <div><label for="pyDate">Received on</label><input id="pyDate" type="date"></div>
+    <div class="panel">
+      <div class="panelhead">
+        <div>
+          <h2>Rate card</h2>
+          <p class="hint">Locked so the price cannot be changed by accident. Press Edit to change it.</p>
         </div>
-        <div class="row">
-          <div><label for="pyFrom">Period starts</label><input id="pyFrom" type="date"></div>
-          <div><label for="pyMode">Mode</label><select id="pyMode"><option>UPI</option><option>Bank transfer</option><option>Cash</option><option>Cheque</option></select></div>
+        <div class="btnrow" style="flex:0 0 auto">
+          <button type="button" class="primary" id="pyOpen">Record a payment</button>
+          <button type="button" class="ghost" id="bInvoice">⬇ Invoice</button>
+          <button type="button" class="ghost" id="bEdit">✎ Edit</button>
         </div>
-        <div class="row">
-          <div><label for="pyRef">UTR / reference</label><input id="pyRef" placeholder="Optional"></div>
-          <div><label for="pyBy">Paid by</label><input id="pyBy" placeholder="Company name"></div>
-        </div>
-        <button type="button" id="pySave">Record the payment</button>
-        <button type="button" class="ghost" id="bInvoice">⬇ Download invoice</button>
-        <div class="err" id="pyErr"></div>
       </div>
-      <div>
-        <div class="sechead"><h2>Rates and details</h2></div>
+
+      <div id="bView" class="deflist"></div>
+
+      <div id="bForm" class="hidden">
         <div class="row">
           <div><label for="bRateM">Monthly (₹ per caller)</label><input id="bRateM" inputmode="numeric"></div>
           <div><label for="bRateQ">Quarterly (₹ per caller)</label><input id="bRateQ" inputmode="numeric"></div>
-        </div>
-        <div class="row">
           <div><label for="bRateY">Yearly (₹ per caller)</label><input id="bRateY" inputmode="numeric"></div>
-          <div><label for="bFree">Callers not charged</label><input id="bFree" inputmode="numeric"></div>
         </div>
         <div class="row">
+          <div><label for="bFree">Callers not charged</label><input id="bFree" inputmode="numeric"></div>
           <div><label for="bTo">Bill to (company)</label><input id="bTo" placeholder="Company name"></div>
           <div><label for="bBy">Bill from (you)</label><input id="bBy" placeholder="Your name or firm"></div>
         </div>
-        <div><label for="bUpi">UPI ID for the invoice</label><input id="bUpi" placeholder="name@bank"></div>
-        <button type="button" id="bSave">Save</button>
+        <div class="row">
+          <div><label for="bUpi">UPI ID shown on the invoice</label><input id="bUpi" placeholder="name@bank"></div>
+          <div></div><div></div>
+        </div>
+        <div class="btnrow">
+          <button type="button" id="bSave">Save the rate card</button>
+          <button type="button" class="ghost" id="bCancel">Cancel</button>
+        </div>
         <div class="err" id="bErr"></div>
       </div>
     </div>
@@ -765,6 +776,30 @@
       <button type="button" class="ghost danger hidden" id="uDelete">Delete this caller</button>
       <div class="err" id="uErr"></div>
     </form>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="payModal">
+  <div class="modal">
+    <h2>Record a payment</h2>
+    <p class="lead" id="pyLead"></p>
+    <div class="row" style="margin-top:12px">
+      <div><label for="pyAmount">Amount received (₹)</label><input id="pyAmount" inputmode="numeric"></div>
+      <div><label for="pyDate">Received on</label><input id="pyDate" type="date"></div>
+    </div>
+    <div class="row">
+      <div><label for="pyFrom">Period starts</label><input id="pyFrom" type="date"></div>
+      <div><label for="pyMode">Mode</label><select id="pyMode"><option>UPI</option><option>Bank transfer</option><option>Cash</option><option>Cheque</option></select></div>
+    </div>
+    <div class="row">
+      <div><label for="pyRef">UTR / reference</label><input id="pyRef" placeholder="Optional"></div>
+      <div><label for="pyBy">Paid by</label><input id="pyBy" placeholder="Company name"></div>
+    </div>
+    <div class="err" id="pyErr"></div>
+    <div class="btnrow" style="margin-top:14px">
+      <button type="button" id="pySave">Record the payment</button>
+      <button type="button" class="ghost" data-close="payModal">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -2081,12 +2116,18 @@ function renderBilling(){
   }).join("");
   document.querySelectorAll("[data-plan]").forEach(el => el.onclick = () => saveBilling(el.dataset.plan));
 
+  $("bView").innerHTML = [
+    ["Monthly", rupee(B.rates.Monthly) + " / caller", B.plan === "Monthly"],
+    ["Quarterly", rupee(B.rates.Quarterly) + " / caller", B.plan === "Quarterly"],
+    ["Yearly", rupee(B.rates.Yearly) + " / caller", B.plan === "Yearly"],
+    ["Callers not charged", String(B.freeCallers), false],
+    ["Bill to", B.billedTo || "—", false],
+    ["Bill from", B.billedBy || "—", false],
+    ["UPI for the invoice", B.upi || "—", false],
+    ["Recorded payments", String(B.payments.length), false],
+  ].map(r => '<div class="' + (r[2] ? "on" : "") + '"><span>' + esc(r[0]) + "</span><b>" + esc(r[1]) + "</b></div>").join("");
   $("bRateM").value = B.rates.Monthly; $("bRateQ").value = B.rates.Quarterly; $("bRateY").value = B.rates.Yearly;
   $("bFree").value = B.freeCallers; $("bTo").value = B.billedTo; $("bBy").value = B.billedBy; $("bUpi").value = B.upi;
-  if (!v("pyAmount")) $("pyAmount").value = B.amount;
-  if (!v("pyDate")) $("pyDate").value = B.today;
-  if (!v("pyFrom")) $("pyFrom").value = B.nextFrom;
-  if (!v("pyBy")) $("pyBy").value = B.billedTo;
 
   $("bPays").innerHTML = B.payments.length ? B.payments.map(p =>
     "<tr><td>" + esc(niceDate(p.received)) + "</td><td>" + esc(niceDate(p.from)) + " – " + esc(niceDate(p.to)) +
@@ -2106,7 +2147,27 @@ async function saveBilling(plan){
   }catch(e){ $("bErr").textContent = e.message; }
   busy(false);
 }
-$("bSave").onclick = () => saveBilling(null);
+function bEditMode(on){
+  $("bForm").classList.toggle("hidden", !on);
+  $("bView").classList.toggle("hidden", on);
+  $("bEdit").classList.toggle("hidden", on);
+  $("bErr").textContent = "";
+}
+$("bEdit").onclick = () => bEditMode(true);
+$("bCancel").onclick = () => { bEditMode(false); renderBilling(); };
+$("bSave").onclick = async () => { await saveBilling(null); bEditMode(false); };
+$("pyOpen").onclick = () => {
+  if (!B) return;
+  $("pyLead").textContent = "The " + B.plan.toLowerCase() + " plan for " + B.billable + " callers comes to " +
+    rupee(B.amount) + ", covering " + niceDate(B.nextFrom) + " to " + niceDate(B.nextTo) + ".";
+  $("pyAmount").value = B.amount;
+  $("pyDate").value = B.today;
+  $("pyFrom").value = B.nextFrom;
+  $("pyBy").value = B.billedTo;
+  $("pyRef").value = "";
+  $("pyErr").textContent = "";
+  $("payModal").classList.remove("hidden");
+};
 $("pySave").onclick = async () => {
   $("pyErr").textContent = "";
   if (!v("pyAmount")) { $("pyErr").textContent = "Please enter the amount received."; return; }
@@ -2115,7 +2176,7 @@ $("pySave").onclick = async () => {
     B = await call("recordPayment", { payment: {
       amount: v("pyAmount"), received: v("pyDate"), from: v("pyFrom"), plan: B.plan,
       mode: v("pyMode"), reference: v("pyRef"), paidBy: v("pyBy") } });
-    $("pyRef").value = "";
+    $("payModal").classList.add("hidden");
     renderBilling(); toast("Payment recorded — paid till " + niceDate(B.paidTill));
   }catch(e){ $("pyErr").textContent = e.message; }
   busy(false);
