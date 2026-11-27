@@ -85,7 +85,8 @@ function setup() {
    ['Billed to', '', 'Company name that appears on the invoice'],
    ['Billed by', '', 'Your name or firm, shown as the biller on the invoice'],
    ['Billing UPI', '', 'UPI ID shown on the invoice for payment'],
-   ['Free callers', '0', 'This many callers are not charged (for example your own admin logins)']].forEach(function (r) {
+   ['Free callers', '0', 'This many callers are not charged (for example your own admin logins)'],
+   ['Billed callers', '', 'Bill for exactly this many callers. Leave blank to follow the live count of active callers']].forEach(function (r) {
     if (!setting_(r[0], '')) append_('Settings', r);
   });
   buildSummaries_(ss);
@@ -1056,6 +1057,7 @@ const API = {
      ['Rate quarterly', Math.max(0, Math.round(num_(x.rateQuarterly)))],
      ['Rate yearly', Math.max(0, Math.round(num_(x.rateYearly)))],
      ['Free callers', Math.max(0, Math.round(num_(x.freeCallers)))],
+     ['Billed callers', String(x.billedCallers || '').trim() === '' ? '' : Math.max(0, Math.round(num_(x.billedCallers)))],
      ['Billed to', String(x.billedTo || '').trim()],
      ['Billed by', String(x.billedBy || '').trim()],
      ['Billing UPI', String(x.upi || '').trim()]].forEach(function (r) { setSetting_(r[0], r[1]); });
@@ -1105,7 +1107,9 @@ function billing_() {
                   Yearly: num_(setting_('Rate yearly', '499')) };
   const free = Math.max(0, Math.round(num_(setting_('Free callers', '0'))));
   const callers = users_().filter(function (u) { return u.role === 'caller' && u.active === 'yes'; }).length;
-  const billable = Math.max(0, callers - free);
+  const chosen = String(setting_('Billed callers', '')).trim();
+  const fixedCount = chosen !== '' && num_(chosen) > 0;
+  const billable = fixedCount ? Math.round(num_(chosen)) : Math.max(0, callers - free);
   const rate = rates[plan];
   const paidTill = /^\d{4}-\d{2}-\d{2}$/.test(setting_('Paid till', '')) ? setting_('Paid till', '') : '';
   const nextFrom = paidTill && paidTill >= today ? addDays_(paidTill, 1) : today;
@@ -1117,6 +1121,7 @@ function billing_() {
   return {
     today: today, plan: plan, months: months, rates: rates, rate: rate,
     callers: callers, freeCallers: free, billable: billable,
+    billedCallers: chosen, fixedCount: fixedCount,
     amount: billable * rate,
     perMonth: Math.round((billable * rate) / months),
     paidTill: paidTill,

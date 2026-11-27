@@ -678,9 +678,16 @@
           <div><label for="bRateY">Yearly (₹ per caller)</label><input id="bRateY" inputmode="numeric"></div>
         </div>
         <div class="row">
-          <div><label for="bFree">Callers not charged</label><input id="bFree" inputmode="numeric"></div>
+          <div><label for="bCount">Callers to bill</label><input id="bCount" inputmode="numeric" placeholder="Blank = all active">
+            <p class="hint" style="text-align:left;margin:4px 0 0">Leave it blank and the bill follows however many callers are active. Put a number to bill for exactly that many.</p></div>
+          <div><label for="bFree">Callers not charged</label><input id="bFree" inputmode="numeric">
+            <p class="hint" style="text-align:left;margin:4px 0 0">Taken off the live count. Ignored when you set a number above.</p></div>
+          <div></div>
+        </div>
+        <div class="row">
           <div><label for="bTo">Bill to (company)</label><input id="bTo" placeholder="Company name"></div>
           <div><label for="bBy">Bill from (you)</label><input id="bBy" placeholder="Your name or firm"></div>
+          <div></div>
         </div>
         <div class="row">
           <div><label for="bUpi">UPI ID shown on the invoice</label><input id="bUpi" placeholder="name@bank"></div>
@@ -2085,7 +2092,9 @@ function renderBilling(){
   $("bPlanName").textContent = B.plan;
   $("bPlanRate").textContent = rupee(B.rate) + " per caller per " + (B.months === 1 ? "month" : B.months + " months");
   $("bCallers").textContent = B.billable;
-  $("bCallersSub").textContent = B.freeCallers ? B.callers + " active, " + B.freeCallers + " not charged" : "active callers";
+  $("bCallersSub").textContent = B.fixedCount
+    ? "set by you \u00b7 " + B.callers + " active now"
+    : (B.freeCallers ? B.callers + " active, " + B.freeCallers + " not charged" : "all active callers");
   $("bAmount").textContent = rupee(B.amount);
   $("bAmountSub").textContent = "works out to " + rupee(B.perMonth) + " a month";
   $("bPaidTill").textContent = B.paidTill ? niceDate(B.paidTill) : "not paid yet";
@@ -2120,14 +2129,15 @@ function renderBilling(){
     ["Monthly", rupee(B.rates.Monthly) + " / caller", B.plan === "Monthly"],
     ["Quarterly", rupee(B.rates.Quarterly) + " / caller", B.plan === "Quarterly"],
     ["Yearly", rupee(B.rates.Yearly) + " / caller", B.plan === "Yearly"],
-    ["Callers not charged", String(B.freeCallers), false],
+    ["Callers billed", B.fixedCount ? B.billable + " (fixed)" : B.billable + " (all active)", false],
+    ["Callers not charged", B.fixedCount ? "—" : String(B.freeCallers), false],
     ["Bill to", B.billedTo || "—", false],
     ["Bill from", B.billedBy || "—", false],
     ["UPI for the invoice", B.upi || "—", false],
     ["Recorded payments", String(B.payments.length), false],
   ].map(r => '<div class="' + (r[2] ? "on" : "") + '"><span>' + esc(r[0]) + "</span><b>" + esc(r[1]) + "</b></div>").join("");
   $("bRateM").value = B.rates.Monthly; $("bRateQ").value = B.rates.Quarterly; $("bRateY").value = B.rates.Yearly;
-  $("bFree").value = B.freeCallers; $("bTo").value = B.billedTo; $("bBy").value = B.billedBy; $("bUpi").value = B.upi;
+  $("bCount").value = B.billedCallers; $("bFree").value = B.freeCallers; $("bTo").value = B.billedTo; $("bBy").value = B.billedBy; $("bUpi").value = B.upi;
 
   $("bPays").innerHTML = B.payments.length ? B.payments.map(p =>
     "<tr><td>" + esc(niceDate(p.received)) + "</td><td>" + esc(niceDate(p.from)) + " – " + esc(niceDate(p.to)) +
@@ -2141,7 +2151,7 @@ async function saveBilling(plan){
   try{
     B = await call("saveBilling", { billing: {
       plan: plan || B.plan, rateMonthly: v("bRateM"), rateQuarterly: v("bRateQ"), rateYearly: v("bRateY"),
-      freeCallers: v("bFree"), billedTo: v("bTo"), billedBy: v("bBy"), upi: v("bUpi") } });
+      freeCallers: v("bFree"), billedCallers: v("bCount"), billedTo: v("bTo"), billedBy: v("bBy"), upi: v("bUpi") } });
     $("pyAmount").value = B.amount;
     renderBilling(); toast("Saved");
   }catch(e){ $("bErr").textContent = e.message; }
