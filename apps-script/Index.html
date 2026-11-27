@@ -216,6 +216,56 @@
   .tag.opt{background:#e4eae8;color:#5d6b66}
   .colrow .chip{font-size:13px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 10px}
   .vhide{position:absolute;width:1px;height:1px;opacity:0}
+  /* ---- public plans page ---- */
+  .plwrap{max-width:1120px;margin:0 auto;padding:36px 18px 56px}
+  .plhead{text-align:center;margin-bottom:26px}
+  .plkicker{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--brand);margin:0 0 8px}
+  .plhead h1{margin:0 0 10px;font-size:32px;line-height:1.15;letter-spacing:-.02em}
+  .pllead{margin:0 auto;max-width:620px;color:var(--muted);font-size:16px;line-height:1.55}
+  .pltoggle{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px;margin:24px auto 0;gap:4px}
+  .pltoggle button{width:auto;margin:0;border:0;background:transparent;border-radius:999px;padding:9px 20px;
+       font-size:14px;font-weight:600;color:var(--muted);line-height:1.2;height:auto;box-shadow:none}
+  .pltoggle button.on{background:var(--brand);color:#fff}
+  .pltoggle button small{display:block;font-size:11px;font-weight:600;opacity:.85;margin-top:1px}
+  .plnow{max-width:560px;margin:24px auto 0;background:#fff;border:1px solid var(--line);border-radius:12px;
+       padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:14px;text-align:left}
+  .plnow span{display:block;font-size:12px;color:var(--muted)}
+  .plnow b{font-size:17px}
+  .plamt{font-size:22px;font-weight:800;color:var(--brand);white-space:nowrap}
+  .plgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:28px}
+  .plcard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 20px;display:flex;flex-direction:column;position:relative}
+  .plcard.pick{border:2px solid var(--brand);box-shadow:0 10px 30px -12px rgba(11,63,57,.3)}
+  .pltag{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--brand);color:#fff;
+       font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:4px 12px;border-radius:999px;white-space:nowrap}
+  .plcard h2{margin:0;font-size:17px}
+  .plseats{margin:3px 0 16px;font-size:13px;color:var(--muted)}
+  .plprice{font-size:29px;font-weight:800;letter-spacing:-.02em;line-height:1.1;color:var(--brand)}
+  .plprice em{font-size:14px;font-weight:600;color:var(--muted);font-style:normal}
+  .plper{font-size:13px;color:var(--muted);margin-top:3px}
+  .plsave{align-self:flex-start;margin-top:9px;background:var(--ok-bg);color:#0c7a4a;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px}
+  .plsave:empty{display:none}
+  .plrate{margin-top:15px;padding-top:14px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+  .plrate b{color:var(--ink)}
+  .plcard ul,.plfeats ul{list-style:none;margin:13px 0 0;padding:0;font-size:13.5px;line-height:1.5}
+  .plcard li,.plfeats li{position:relative;padding-left:21px;margin-bottom:8px;color:#2c3a37}
+  .plcard li:before,.plfeats li:before{content:"";position:absolute;left:3px;top:6px;width:5px;height:9px;
+       border:solid var(--brand);border-width:0 2px 2px 0;transform:rotate(42deg)}
+  .plnote{margin-top:30px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+  .plnote h3{margin:0 0 10px;font-size:15px}
+  .plnote p{margin:0 0 9px;font-size:14px;line-height:1.6;color:#36433f}
+  .pltab{width:100%;border-collapse:collapse;margin-top:12px;font-size:13.5px}
+  .pltab th,.pltab td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+  .pltab th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .pltab .num{text-align:right}
+  .pltab tr.us td{background:#f3f8f6;font-weight:700}
+  .plfine{font-size:12.5px;color:var(--muted);margin-top:10px}
+  .plfeats{display:grid;grid-template-columns:repeat(2,1fr);gap:4px 34px;margin-top:14px}
+  .plfeats h4{margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brand)}
+  .plfeats ul{margin:0 0 18px}
+  .plfoot{margin-top:26px;text-align:center;font-size:12.5px;color:var(--muted);line-height:1.6}
+  @media (max-width:980px){ .plgrid{grid-template-columns:1fr 1fr} .plhead h1{font-size:27px} }
+  @media (max-width:760px){ .plfeats{grid-template-columns:1fr} }
+  @media (max-width:560px){ .plgrid{grid-template-columns:1fr} .plnow{flex-direction:column;align-items:flex-start} }
   .panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:18px}
   .panelhead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
   .panelhead h2{margin:0;font-size:16px}
@@ -310,6 +360,95 @@
     <div class="hero-foot">Your Login ID and password are given by your admin.</div>
   </section>
   <section class="auth-side" id="authSide"></section>
+</div>
+
+<div class="hidden" id="plansView">
+  <div class="plwrap">
+    <header class="plhead">
+      <p class="plkicker">Team Attendance</p>
+      <h1>Subscription plans</h1>
+      <p class="pllead">Attendance, call numbers, leads and site visits for a telecalling team — logged by the callers themselves, straight into your own Google Sheet.</p>
+      <div class="pltoggle" id="plToggle">
+        <button type="button" data-cycle="m" class="on">Monthly</button>
+        <button type="button" data-cycle="q">Quarterly<small>save 16%</small></button>
+        <button type="button" data-cycle="y">Annual<small>save 30%</small></button>
+      </div>
+      <div class="plnow">
+        <div><span>Your team right now</span><b id="plSeats">—</b></div>
+        <div class="plamt" id="plAmt">—</div>
+      </div>
+    </header>
+
+    <div class="plgrid" id="plGrid"></div>
+
+    <div class="plnote">
+      <h3>How the price is worked out</h3>
+      <p>One rate per caller, per period — <b id="plRates">—</b>. Nothing is charged for admin logins, and a caller marked inactive stops counting from that day. The cards above are that same rate shown at four common team sizes.</p>
+      <p>Quarterly saves about 16% against paying monthly; annual saves about 30%. Payment is by UPI or bank transfer against an invoice generated inside the admin panel.</p>
+      <h3 style="margin-top:20px">What the same thing costs elsewhere</h3>
+      <table class="pltab">
+        <thead><tr><th>Option</th><th class="num">Per caller / month</th><th class="num" id="plYrHead">Per year</th></tr></thead>
+        <tbody id="plCompare"></tbody>
+      </table>
+      <p class="plfine">Outside prices are list rates before 18% GST, from each vendor's published pricing in November 2026. Attendance tracking sits on their mid tier, not the entry one.</p>
+    </div>
+
+    <div class="plnote">
+      <h3>Everything included, on every plan</h3>
+      <p>The price only follows how many callers you have. No feature is held back for a bigger plan.</p>
+      <div class="plfeats">
+        <div>
+          <h4>What the caller does</h4>
+          <ul>
+            <li>Posts login with SM, CP firm, location and branch — all set by the admin, so the caller cannot change them</li>
+            <li>Posts logout with total calls, connected calls, lead of the day, site visits done, tomorrow's visits and visits confirmed week to date</li>
+            <li>Picks their own logout time from a 12-hour dropdown, for when they leave early and post late</li>
+            <li>Gets the ready-made WhatsApp message for the group, and can reopen it if WhatsApp was closed by mistake</li>
+            <li>Sees a reminder after your set time if the logout has not been posted</li>
+            <li>Raises a missed-logout request when a day was skipped</li>
+          </ul>
+        </div>
+        <div>
+          <h4>What the admin gets</h4>
+          <ul>
+            <li>Today tab — who is in, who is late, who has not posted, live</li>
+            <li>Approves or rejects missed-logout requests</li>
+            <li>Adds callers one by one, or uploads the whole list from Excel through a spreadsheet-style grid</li>
+            <li>Downloads the caller list as Excel, filtered by branch or search</li>
+            <li>Deletes a caller, with or without their attendance history</li>
+            <li>Resets any caller's password</li>
+            <li>Moves a caller to another branch, with the full transfer history kept</li>
+          </ul>
+        </div>
+        <div>
+          <h4>Reports</h4>
+          <ul>
+            <li>Attendance report by day, caller, branch or SM</li>
+            <li>Monthly report of calls, connected, leads and visits per caller</li>
+            <li>Any date range you choose</li>
+            <li>Employee Summary and Branch Summary sheets that keep themselves up to date — working days, present, absent, late</li>
+            <li>Branch history of every transfer</li>
+            <li>Everything exports to Excel</li>
+          </ul>
+        </div>
+        <div>
+          <h4>Your setup and your data</h4>
+          <ul>
+            <li>Your own lists — branches, sales managers, locations, CP firms</li>
+            <li>Your own rules — late-after time, logout reminder time, weekly off, the date absence starts counting</li>
+            <li>Optional PAN and Aadhaar against each caller</li>
+            <li>Billing built in — plan, caller count, payment record and printable invoice</li>
+            <li><b>All of it sits in your own Google Sheet.</b> No other company holds your attendance data, and it stays yours if you ever stop paying</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <footer class="plfoot">
+      Prices in Indian rupees. Billed to the company, collected by UPI or bank transfer.<br>
+      Changing plan takes effect from the next period — the current paid period always runs to its end date.
+    </footer>
+  </div>
 </div>
 
 <div class="card" id="signInView">
@@ -665,6 +804,7 @@
         <div class="btnrow" style="flex:0 0 auto">
           <button type="button" class="primary" id="pyOpen">Record a payment</button>
           <button type="button" class="ghost" id="bInvoice">⬇ Invoice</button>
+          <button type="button" class="ghost" id="bPlansPage">↗ Plans page</button>
           <button type="button" class="ghost" id="bEdit">✎ Edit</button>
         </div>
       </div>
@@ -962,6 +1102,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
+/*__BOOT__*/
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -2080,7 +2221,7 @@ $("bkExport").onclick = () => downloadCallers((A.users || []).filter(u => u.role
 /* ================= Billing ================= */
 let B = null;
 const PLAN_MONTHS = { Monthly: 1, Quarterly: 3, Yearly: 12 };
-function rupee(n){ return "₹" + Number(n || 0).toLocaleString("en-IN"); }
+function rupee(n){ return "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
 async function loadBilling(){
   busy(true);
   try{ B = await call("billingData", {}); renderBilling(); }
@@ -2164,6 +2305,12 @@ function bEditMode(on){
   $("bErr").textContent = "";
 }
 $("bEdit").onclick = () => bEditMode(true);
+$("bPlansPage").onclick = () => {
+  if (!B || !B.appUrl) return;
+  const url = B.appUrl + "?page=plans";
+  const w = window.open(url, "_blank");
+  if (!w) popup("Plans page", "Pop-ups are blocked. The page is at:\n\n" + url);
+};
 $("bCancel").onclick = () => { bEditMode(false); renderBilling(); };
 $("bSave").onclick = async () => { await saveBilling(null); bEditMode(false); };
 $("pyOpen").onclick = () => {
@@ -2444,7 +2591,54 @@ document.addEventListener("click", () => { if (calFor) closeCal(); });
 window.addEventListener("resize", closeCal);
 document.querySelectorAll("input[type=date]").forEach(makeDatePicker);
 
+/* ================= public plans page ================= */
+const PL_MONTHS = { m: 1, q: 3, y: 12 };
+const PL_LABEL  = { m: "/mo", q: "/quarter", y: "/year" };
+const PL_TIERS  = [["Small team", 25], ["Growing team", 60], ["Your team", 0], ["Large team", 120]];
+const PL_LINES  = ["Every feature, no limits", "Any number of branches and SMs", "Unlimited reports and downloads"];
+let PL = null;
+
+function plRender(cycle){
+  const rate = PL.rates[cycle], months = PL_MONTHS[cycle], mine = PL.callers;
+  const tiers = PL_TIERS.map(t => [t[0], t[1] || mine, !t[1]]);
+  $("plGrid").innerHTML = tiers.map(t => {
+    const n = t[1], total = rate * n, perMonth = rate / months;
+    const save = PL.rates.m > 0 ? Math.round((1 - perMonth / PL.rates.m) * 100) : 0;
+    return '<div class="plcard' + (t[2] ? " pick" : "") + '">' +
+      (t[2] ? '<span class="pltag">Your plan</span>' : "") +
+      "<h2>" + esc(t[0]) + '</h2><p class="plseats">' + (t[2] ? n + " callers" : "Up to " + n + " callers") + "</p>" +
+      '<div class="plprice">' + rupee(total) + "<em>" + PL_LABEL[cycle] + "</em></div>" +
+      '<p class="plper">' + rupee(total / months) + " a month · " + rupee(total * (12 / months)) + " a year</p>" +
+      '<span class="plsave">' + (save > 0 ? "save " + save + "%" : "") + "</span>" +
+      '<p class="plrate">Works out to <b>' + rupee(perMonth) + " per caller a month</b></p>" +
+      "<ul>" + PL_LINES.map(l => "<li>" + l + "</li>").join("") + "</ul></div>";
+  }).join("");
+
+  $("plSeats").textContent = mine + " active caller" + (mine === 1 ? "" : "s");
+  $("plAmt").innerHTML = rupee(rate * mine) + '<span style="font-size:13px;font-weight:600;color:var(--muted)">' + PL_LABEL[cycle] + "</span>";
+  $("plRates").textContent = rupee(PL.rates.m) + " a month, " + rupee(PL.rates.q) + " a quarter or " + rupee(PL.rates.y) + " a year";
+  $("plYrHead").textContent = mine + " callers / year";
+  $("plCompare").innerHTML =
+    "<tr><td>Zoho People — Professional</td><td class='num'>₹100</td><td class='num'>" + rupee(100 * 12 * mine) + "</td></tr>" +
+    "<tr><td>greytHR — Growth</td><td class='num'>≈ ₹88</td><td class='num'>" + rupee(88 * 12 * mine) + "</td></tr>" +
+    "<tr class='us'><td>Team Attendance — annual</td><td class='num'>" + rupee(PL.rates.y / 12) + "</td><td class='num'>" + rupee(PL.rates.y * mine) + "</td></tr>";
+}
+function plStart(info){
+  PL = info;
+  ["signInView", "callerView", "adminView"].forEach(id => $(id).classList.add("hidden"));
+  $("plansView").classList.remove("hidden");
+  $("plToggle").addEventListener("click", e => {
+    const b = e.target.closest("button[data-cycle]");
+    if (!b) return;
+    [...$("plToggle").children].forEach(x => x.classList.toggle("on", x === b));
+    plRender(b.dataset.cycle);
+  });
+  plRender("m");
+}
+
 /* ================= start ================= */
+if (window.__BOOT && window.__BOOT.page === "plans"){ plStart(window.__BOOT.plans); }
+else
 (async function(){
   if (!token) return;
   busy(true);

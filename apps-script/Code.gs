@@ -49,11 +49,31 @@ const NUM_COLS = ['Total Calls', 'Connect Calls', 'Connect %', 'Lead of the Day'
 const SUMMARY_ROWS = 300;     // employee rows prepared in "Employee Summary"
 
 /* ================= Web page ================= */
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Team Attendance')
+function doGet(e) {
+  const page = (e && e.parameter && e.parameter.page) || '';
+  let html = HtmlService.createHtmlOutputFromFile('Index').getContent();
+  if (page === 'plans') {
+    html = html.replace('/*__BOOT__*/', 'window.__BOOT = ' + JSON.stringify({ page: 'plans', plans: plansInfo_() }) + ';');
+  }
+  return HtmlService.createHtmlOutput(html)
+    .setTitle(page === 'plans' ? 'Team Attendance — Subscription plans' : 'Team Attendance')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function appUrl_() {
+  try { return String(ScriptApp.getService().getUrl() || ''); } catch (e) { return ''; }
+}
+
+/* Numbers the public plans page needs, with no sign-in */
+function plansInfo_() {
+  return {
+    callers: users_().filter(function (u) { return u.role === 'caller' && u.active === 'yes'; }).length,
+    rates: { m: num_(setting_('Rate monthly', '59')),
+             q: num_(setting_('Rate quarterly', '149')),
+             y: num_(setting_('Rate yearly', '499')) },
+    company: setting_('Billed to', ''),
+  };
 }
 
 /* ================= One-time setup ================= */
@@ -1130,6 +1150,7 @@ function billing_() {
     neverPaid: !paidTill,
     nextFrom: nextFrom,
     nextTo: addDays_(addMonths_(nextFrom, months), -1),
+    appUrl: appUrl_(),
     billedTo: setting_('Billed to', ''),
     billedBy: setting_('Billed by', ''),
     upi: setting_('Billing UPI', ''),
